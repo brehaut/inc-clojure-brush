@@ -56,7 +56,7 @@ var ClojureBrush = (function (SH) {
     
     toMatches: function () {
       var m = object(this);
-      if (!m.css) m.css = this.tag;
+      if (!this.css) m.css = this.tag;
       return [m];
     }
   };
@@ -412,11 +412,10 @@ var ClojureBrush = (function (SH) {
 
           // apply specific rules
           if (annotation_rules.hasOwnProperty(head.value)) {
-            return annotation_rules[head.value](exp);
+            return annotation_rules[head.value](n);
           }       
         }
         else { // empty list
-          console.log("()")
           n.opening.css = n.closing.css = "constants";
         }
       
@@ -434,12 +433,11 @@ var ClojureBrush = (function (SH) {
         break;
         
       case "symbol":
-        console.log(exp.value, exp.value.match(/[A-Z].*\//))
         if (exp.value.match(/[A-Z].*\/[A-Z_]+/)) {
-          n.css = "constant";
+          n.tag = "constants";
+          n.css = "constants";
         }
-
-        break
+        break;
     
       case "keyword":
         n.css = "constants";
@@ -486,7 +484,9 @@ var ClojureBrush = (function (SH) {
       flatten_to_buffer(annotate_expressions(sexps), buffer);
       
       buffer = map(buffer, function (token) {
-        if (!token.css) return extend(object(token), {css: token.tag});
+        if (!token.css) {
+          return extend(object(token), {css: token.tag});
+        }
         return token;
       });
     
