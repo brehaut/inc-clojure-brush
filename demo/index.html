@@ -60,6 +60,22 @@
 ; Rainbow Parens:
 ((((((()))))))
 
+(map #(+ % %2) [1 2 3] [2 3 4])
+
+
+(import (javax.swing JFrame JPanel)
+        (java.awt Graphics2D RenderingHints)
+        (java.awt.image BufferedImage))
+ 
+(defn ^Graphics2D create-turtle [x y]
+   (let [panel (JPanel.)
+         frame (doto (JFrame.)
+                   (.add panel)
+                   (.setSize x y)
+                   (.show))]
+      (doto (.getGraphics panel)
+         (.setRenderingHints
+            {RenderingHints/KEY_ANTIALIASING RenderingHints/VALUE_ANTIALIAS_ON}))))
 </pre>
 
 </html>
