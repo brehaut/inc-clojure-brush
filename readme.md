@@ -12,6 +12,7 @@ The current state of this project is a stream of consciousness javascript file. 
 
 No error handling exists yet. Bugs abound.
 
+The code is pretty hairy in a lot of places, and while it tries to maintain immutable datastructures, it fails in a number of places. sorry about that.
 
 ### Thanks
 
