@@ -172,7 +172,8 @@ var ClojureBrush = (function (SH) {
       tag: scope_type,
       parent: parent,
       opening: opening_token,
-      closing: null
+      closing: null,
+      depth: parent.depth + 1
     };
   
     parent.list.push(scope);
@@ -202,7 +203,8 @@ var ClojureBrush = (function (SH) {
       tag: "toplevel", 
       parent: null, 
       opening: null,
-      closing: null
+      closing: null,
+      depth: -1
     };
 
     tokens = ignore_whitespace(tokens);
@@ -311,7 +313,6 @@ var ClojureBrush = (function (SH) {
     var bindings = exp.list[1];
     if (bindings) {
       n.list[1] = _annotate_binding_vector(bindings, function (name, exp) {
-        console.log(name)
         if (name.tag == "keyword" && (name.value == ":when" || name.value == ":let")) {
           name.css = "functions";
         }
@@ -354,6 +355,7 @@ var ClojureBrush = (function (SH) {
 
 
   function annotate_expressions(exp) {
+    
     var n = object(exp);
 
     switch (exp.tag) {
@@ -365,24 +367,33 @@ var ClojureBrush = (function (SH) {
         break;
       
       case "list": // functions, macros, special forms, comments
+        var rainbow = "rainbow" + ((exp.depth % 5) + 1);
+        exp.opening.css = rainbow;
+        exp.closing.css = rainbow;
+        
         var head = exp.list[0];
       
-        if (clojure_names.special_forms.indexOf(head.value) >= 0) {
-          head.css = "preprocessor";        
-        } 
-        else if (clojure_names.clojure_core.indexOf(head.value) >= 0) {
-          head.css = "functions";
-        }
+        if (head) {
+          if (head.tag.match(/list|vector|map/)) {
+            head = annotate_expressions(head);
+          }
+          else if (clojure_names.special_forms.indexOf(head.value) >= 0) {
+            head.css = "preprocessor";        
+          } 
+          else if (clojure_names.clojure_core.indexOf(head.value) >= 0) {
+            head.css = "functions";
+          }
+          
+          n.list = [head];
+          for (var i = 1; i < exp.list.length; i++) {
+            n.list.push(annotate_expressions(exp.list[i]));
+          }
 
-        n.list = [head];
-        for (var i = 1; i < exp.list.length; i++) {
-          n.list.push(annotate_expressions(exp.list[i]));
+          // apply specific rules
+          if (annotation_rules.hasOwnProperty(head.value)) {
+            return annotation_rules[head.value](exp);
+          }       
         }
-      
-        // apply specific rules
-        if (annotation_rules.hasOwnProperty(head.value)) {
-          return annotation_rules[head.value](exp);
-        }       
       
         break;
       

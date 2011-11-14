@@ -1,0 +1,69 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>(inc clojure-brush) Demo</title>
+    <script type="text/javascript" src="shCore.js"></script>
+    <script type="text/javascript" src="../clojure-brush.js"></script>
+    <link type="text/css" rel="stylesheet" href="shCoreDefault.css"/>
+
+    <style>
+      .syntaxhighlighter .rainbow1 { }
+      .syntaxhighlighter .rainbow2 { color: #A00 !important }
+      .syntaxhighlighter .rainbow3 { color: #080 !important }
+      .syntaxhighlighter .rainbow4 { color: #00A !important } 
+      .syntaxhighlighter .rainbow5 { color: #089 !important } 
+    </style>
+
+    <script type="text/javascript">SyntaxHighlighter.all();</script>
+</head>
+
+<body style="background: white; font-family: Helvetica">
+
+<h1>Clojure Brush:</h1>
+<pre class="brush: clojure;">
+(defn foo
+  "a                                                                                                                    
+   b"
+  [a]
+  (if (zero? a) ; dumb test
+    [1 0.1 1r2 1/2 +1 -0.2 12r23 23M]
+    :b))
+
+#"regexp"
+
+\a
+\+ \newline
+(comment this is a test
+   (when frobitz :asdf))
+   
+(for [a #{1 2 3}
+     :let [b (dec a)] ; bogus
+     :when (zero? b)]
+ a)
+
+(let [a #{1 2 3}
+     :let [b (dec a)] ; :let and :when should not be highlighted
+     :when (zero? b)  ; in a let (or binding)
+     [x y] (list 1 2)
+     {a :key1} (into {} [[:key1 1] [:b 2]])]
+ a)
+
+
+(defn cross-product
+ "Calculates the cross product of two seqs"
+ [s1 s2]
+ (for [a s1
+	b s2]
+   [a b]))
+
+; Rainbow Parens:
+((((((()))))))
+
+</pre>
+
+</html>
+
+
+
+
