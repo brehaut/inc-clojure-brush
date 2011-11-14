@@ -14,6 +14,11 @@ No error handling exists yet. Bugs abound.
 
 The code is pretty hairy in a lot of places, and while it tries to maintain immutable datastructures, it fails in a number of places. sorry about that.
 
+## Improvements over sh-clojure
+
+ * `(comment …)` forms are correctly highlighted.
+ * Doesn't need to use a list of `clojure.core` symbols; can infer from position in a form.
+
 ### Thanks
 
  * [Daniel Solano Gómez](http://www.deepbluelambda.org/) for his original Clojure Brush.

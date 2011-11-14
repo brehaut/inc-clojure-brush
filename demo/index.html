@@ -43,10 +43,10 @@
  a)
 
 (let [a #{1 2 3}
-     :let [b (dec a)] ; :let and :when should not be highlighted
-     :when (zero? b)  ; in a let (or binding)
-     [x y] (list 1 2)
-     {a :key1} (into {} [[:key1 1] [:b 2]])]
+      :let [b (dec a)] ; :let and :when should not be highlighted
+      :when (zero? b)  ; in a let (or binding)
+      [x y] (list 1 2)
+      {a :key1} (into {} [[:key1 1] [:b 2]])]
  a)
 
 
@@ -54,7 +54,7 @@
  "Calculates the cross product of two seqs"
  [s1 s2]
  (for [a s1
-	b s2]
+	   b s2]
    [a b]))
 
 ; Rainbow Parens:
@@ -76,6 +76,7 @@
       (doto (.getGraphics panel)
          (.setRenderingHints
             {RenderingHints/KEY_ANTIALIASING RenderingHints/VALUE_ANTIALIAS_ON}))))
+            
 </pre>
 
 </html>
