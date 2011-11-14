@@ -18,6 +18,9 @@ The code is pretty hairy in a lot of places, and while it tries to maintain immu
 
  * `(comment …)` forms are correctly highlighted.
  * Doesn't need to use a list of `clojure.core` symbols; can infer from position in a form.
+ * Differentiates between functions and macros, and methods and constructors.
+ * Knows about name binding forms such as let, binding, for, etc
+ * Rainbow Parens (with appropriate CSS)
 
 ### Thanks
 

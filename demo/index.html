@@ -76,7 +76,37 @@
       (doto (.getGraphics panel)
          (.setRenderingHints
             {RenderingHints/KEY_ANTIALIASING RenderingHints/VALUE_ANTIALIAS_ON}))))
-            
+
+(defn sierpinski-triangle 
+   []
+   (let [rules      {\a "b-a-b"
+                     \b "a+b+a"}
+         start      "a"
+         angle      (* 2 Math/PI (/ 60 360))
+         operations {\a (partial forward 1)
+                     \b (partial forward 1)
+                     \- (partial rotate (- angle))
+                     \+ (partial rotate angle)}
+         system     (l-system rules 9 start)]
+     (run-turtle (doto (create-turtle 600 600)
+                   (.translate 50 550)
+                   (.rotate (/ Math/PI -2)))
+                 operations
+                 system)))
+
+(defn reverse [s]
+  (reduce cons () s))
+
+(java.package.Class/staticMethod 1 2)
+
+(clojure.namespace/function 1 2)
+
+(.. o m1 m2)
+(clojure.core/.. o m1 m2)
+(... f 1 2)
+
+1
+
 </pre>
 
 </html>

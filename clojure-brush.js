@@ -155,7 +155,7 @@ var ClojureBrush = (function (SH) {
       re(/^#"(?:\.|(\\\")|[^\""\n])*"/g, "string"), // regexp
       re(new XRegExp('^"([^\\\\"]|\\\\.)*"', 'gs'), "string"),
     
-      re(/^[-a-z*?!.><|&%][-a-z*?!.><|&%0-9\/]*/i, "symbol"),
+      re(/^[-_a-z*?!.><|&%][-_a-z*?!.><|&%0-9\/]*/i, "symbol"),
       re(/^:?[-a-z*?!.><|&%][-a-z*?!.><|&%0-9\/]*/i, "keyword"),
       one_of("#(", ")", "(", ")", "#{", "{", "}", "[", "]", "^", "@"),  
       re(/^[\s,]+/, "whitespace"),  
@@ -377,7 +377,6 @@ var ClojureBrush = (function (SH) {
 
 
   function annotate_expressions(exp) {
-    
     var n = object(exp);
 
     switch (exp.tag) {
@@ -389,9 +388,7 @@ var ClojureBrush = (function (SH) {
         break;
       
       case "list": // functions, macros, special forms, comments
-        var rainbow = "rainbow" + ((exp.depth % 5) + 1);
-        exp.opening.css = rainbow;
-        exp.closing.css = rainbow;
+        n.opening.css = n.closing.css = "rainbow" + ((exp.depth % 5) + 1);;
         
         var head = exp.list[0];
       
@@ -400,7 +397,12 @@ var ClojureBrush = (function (SH) {
             head = annotate_expressions(head);
           }
           else {
-            head.css = "functions";
+            if (head.value.match(/(^\.)|(\.$)|[A-Z].*\//)) {
+              head.css = "color1";
+            }
+            else {
+              head.css = "functions";
+            }
           }
           
           n.list = [head];
@@ -413,6 +415,10 @@ var ClojureBrush = (function (SH) {
             return annotation_rules[head.value](exp);
           }       
         }
+        else { // empty list
+          console.log("()")
+          n.opening.css = n.closing.css = "constants";
+        }
       
         break;
       
@@ -422,13 +428,21 @@ var ClojureBrush = (function (SH) {
         n.list = [];
         n.opening.css = "keyword";
         n.closing.css = "keyword";
-        for (var i = 0; i < exp.list; i++) {
+        for (var i = 0; i < exp.list.length; i++) {
           n.list.push(annotate_expressions(exp.list[i]));
         }
         break;
+        
+      case "symbol":
+        console.log(exp.value, exp.value.match(/[A-Z].*\//))
+        if (exp.value.match(/[A-Z].*\/[A-Z_]+/)) {
+          n.css = "constant";
+        }
+
+        break
     
       case "keyword":
-        n.css = "constant";
+        n.css = "constants";
         break;
     }
   
