@@ -64,17 +64,18 @@ var ClojureBrush = (function (SH) {
     this.list = children;   // all the child forms in order
     this.opening = opening; // the token that opens this form.
     this.closing = closing; // the token that closes this form.
+    this.meta = null;
     
     this.depth = parent ? (parent.depth + 1) : 0;
   };
 
   
-  function MetaNode(meta_token, meta_form, parent) {
+  function MetaNode(meta_token, parent) {
     if (!(this instanceof MetaNode)) 
-      return new MetaNode(meta_token, meta_form, parent);
+      return new MetaNode(meta_token, parent);
     
     this.meta_token = meta_token;
-    this.meta_form = meta_form;
+    this.attached_node = null;
     this.parent = parent;
   }
 
@@ -191,14 +192,17 @@ var ClojureBrush = (function (SH) {
     };
     var current = toplevel;
 
+    var pending_meta = null;
+    var collect_next = false;
+    
     for (var i = 0, j = tokens.length; i < j; i++) {
-      if (current == null) debugger 
       var t = tokens[i];
       switch (t.tag) {
         case "^":
         case "#^":
-          
-          break;
+          pending_meta = new MetaNode(t, current);
+          collect_next = true;
+          continue;
           
         case "(":
         case "#(":   
@@ -228,6 +232,25 @@ var ClojureBrush = (function (SH) {
         
         default:
           current.list.push(t);
+      }
+
+      if (collect_next) {
+        switch (t.tag) {
+          case "(":
+          case "#(":   
+          case "{":
+          case "#{":
+            pending_meta.attached_node = current;
+            break;
+          default:
+            pending_meta.attached_node = t;
+        }
+
+        collect_next = null;
+      }
+      else if (pending_meta){
+        current.meta = pending_meta;
+        pending_meta = null;
       }
     }
     return toplevel;
@@ -285,6 +308,27 @@ var ClojureBrush = (function (SH) {
       _annotate_binding_vector(bindings);
     }
   }
+  
+  function _annotate_metadata_recursive(meta) {
+    if (meta && meta.list) {
+      for (var i = 0, j = meta.list.length; i < j; i++) {
+        _annotate_metadata_recursive(meta.list[i]);
+      }
+    }    
+    else {
+      meta.css = "preprocessor";
+    }
+  }
+  
+  function annotate_metadata(exp) {
+    if (!exp.meta) return;
+    var meta = exp.meta;
+    meta.meta_token.css = "preprocessor";
+    
+    console.log(meta.meta_token.value, meta.attached_node)
+    
+    _annotate_metadata_recursive(meta.attached_node);
+  }
 
   var annotation_rules = (function () {
     var rules = {};
@@ -317,8 +361,9 @@ var ClojureBrush = (function (SH) {
     ["let", "binding", "doseq", "for", "domonad"], annotate_binding
   );
 
-
   function annotate_expressions(exp) {
+    annotate_metadata(exp);
+    
     switch (exp.tag) {
       case "toplevel": 
         for (var i = 0; i < exp.list.length; i++) {

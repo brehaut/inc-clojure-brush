@@ -1,0 +1,879 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>(inc clojure-brush) Demo</title>
+    <script type="text/javascript" src="shCore.js"></script>
+    <script type="text/javascript" src="../shBrushClojure.js"></script>
+    <link type="text/css" rel="stylesheet" href="shCoreDefault.css"/>
+
+    <style>
+      .syntaxhighlighter .rainbow1 { }
+      .syntaxhighlighter .rainbow2 { color: #A00 !important }
+      .syntaxhighlighter .rainbow3 { color: #080 !important }
+      .syntaxhighlighter .rainbow4 { color: #00A !important } 
+      .syntaxhighlighter .rainbow5 { color: #089 !important } 
+    </style>
+
+    <script type="text/javascript">
+    SyntaxHighlighter.config.tagName = "code"
+    SyntaxHighlighter.all();
+    </script>
+</head>
+
+<body style="background: white; font-family: Helvetica">
+
+<p>
+This article introduces Clojure's web application stack. The heart of this stack is <a href="https://github.com/mmcgrana/ring/">Ring</a>: an <a href="https://github.com/mmcgrana/ring/blob/master/SPEC">interface</a> for conforming libraries, a set of adapters for various HTTP servers, and middleware and utilities. This article aims to help you navigate the increasingly broad range of libraries and choose some solid libraries and get an app moving with Ring.
+</p>
+
+<p>You will need have at least a basic understand of Clojure (1.2.0), Leiningen and HTTP/Web development to get the most out of this article. </p>
+
+<p>
+All code in this article is using Clojure 1.2 and Ring 0.3.7.
+</p>
+
+<div class="punchout">
+    <h4>A note on <em>full stack</em> frameworks:</h4>
+    <p>
+    If you are familiar with web application frameworks in other languages, such as <em>Ruby on Rails</em> or <em>Django</em>, you may be looking for (or expecting) a full stack solution. While there is a <a href="https://github.com/macourtney/Conjure">full stack</a> solution for  Clojure, I encourage you to explore the wide range of tools available in the Ring ecosystem with an open mind; many of the reasons you might typically choose a full stack are not as important in Clojure.
+    </p>
+</div>
+
+<h3>Architecture Overview</h3>
+<ul class="stackDiagram">
+    <li>
+        <h3>Application
+            </h3><div class="notes"> 
+                The specific details for your web application.
+            </div>
+        
+        <ul>
+            <li>Handler(s)
+                <div class="notes">
+                    Application specific
+                </div>
+            </li>
+            <li>Middleware
+                <div class="notes">
+                    Both application specific and from <code>ring‑core</code>.
+                </div>
+            </li>
+        </ul>
+        <div class="clearfix"></div>
+    </li>
+    <li>Ring Adapter</li>
+    <li>Web Server</li>
+</ul>
+
+<p>
+Most of the details we will be examining will be in the <em>Application</em> layer of this diagram, after all it is the section specific to your sites. We will briefly look at <em>adapters</em> and <em>servers</em>; just enough to get going.
+</p>
+
+<h3>The Basics: Requests, Responses, Handlers &amp; Middleware</h3>
+<blockquote>“It is better to have 100 functions operate on one data structure than 10 functions on 10 data structures.” — Alan J. Perlis</blockquote>
+<p>
+At its most basic, Ring is an <a href="https://github.com/mmcgrana/ring/blob/master/SPEC">interface spec</a>. This spec defines <em>Request</em> and <em>Response</em> map contents and how a function, called a <em>handler</em>, should treat them. A handler is just a function that takes a map and returns a map. In both cases what the keys are, and what their corresponding values are is detailed in the spec. Do look at the spec, and reference it whenever a new request or response key is introduced. To reiterate: there is no magic in a handler function.
+</p>
+
+<p>
+The simplest, and traditional, example of a handle is:
+</p>
+
+<pre><code class="brush: clojure;">(defn hello-handler [req] {:body "Hello, World!" 
+                           :headers {}
+                           :status 200})
+
+(hello-handler {:uri "/hello"}) ; =&gt; {:body "Hello, World!",
+                                ;     :headers {},
+                                ;     :status 200}
+</code></pre>
+
+<p>
+This handler ignores the details of the request (such as the uri and http method) and returns a simple 'Hello, World!' resource. Notice that a web application in Ring is simply a Clojure function, thus it can leverage all the standard Clojure tools for procressing maps and for handling functions. As we will see, this also makes it trivial to test in a repl.
+</p>
+
+<div class="punchout">
+    <h4>Spurious request maps</h4>
+    <p>
+    The observant of you (who have seen the <a href="https://github.com/mmcgrana/ring/blob/master/SPEC">spec</a>) will realise that I am omitting a number of required fields from the request map; it is easier to explore the interface in a REPL. I'll be adding more properties as required, just be aware that these examples are not complete.
+    </p>
+</div>
+
+<p>As an example of leveraging this power, the following handler uses Clojure's destructuring and a <code>when</code> form to check for the correct uri before returning a result:
+</p>
+<pre><code class="brush: clojure;">(defn hello-handler-2 [{:keys [uri]}]
+   (when (= uri "/hello") {:body "Hello, World!" 
+                           :headers {}
+                           :status 200}))
+   
+(hello-handler-2 {:uri "/"})      ; =&gt; nil
+(hello-handler-2 {:uri "/hello"}) ; =&gt; {:body "Hello, World!", 
+                                  ;     :headers {}
+                                  ;     :status 200}
+</code></pre>
+
+<p>
+We can extract out the concept of checking a path to match a constant so that we can reuse it:
+</p>
+<pre><code class="brush: clojure;">(defn wrap-uri-check [expected-uri handler]
+   (fn [{:keys [uri] :as req}]
+       (when (= uri expected-uri) 
+             (handler req))))
+
+(def hello-handler-3 
+    (wrap-uri-check "/hello" 
+        (fn [req] {:body "Hello, world!" 
+                   :headers {}
+                   :status 200})))
+
+(hello-handler-3 {:uri "/"})      ; =&gt; nil
+(hello-handler-3 {:uri "/hello"}) ; =&gt; {:body "Hello, World!", 
+                                  ;     :headers {}
+                                  ;     :status 200}
+</code></pre>
+<p>
+Now we have a reusable uri checking function. This pattern of decorating a handler function with a wrapper that processes the request (or response) is known as a <em>middleware</em>. Note that middleware are called in the reverse order to the wrapping, e.g. the inner most middleware handles the incoming request last and the outgoing response first, while the outer most middleware handles the incoming request first and the outgoing request last.</p>
+
+<p>
+One last variation of <code>hello-handler</code>:
+</p>
+
+<div class="punchout">
+    <strong>Dependencies:</strong> <code>[ring/ring‑core "0.3.7"]</code>
+</div>
+
+<pre id="ring-intro-greeter-handler"><code class="brush: clojure;">(use '[ring.util.response :only [response]])
+    
+(defn make-greeting-handler [word greeting]
+    (wrap-uri-check (str "/" word)
+        (constantly (response greeting))))
+
+(defn first-of
+    [arguments fns] 
+    (first (keep #(apply % arguments) fns)))
+
+(def hallo-handler (make-greeting-handler "hallo" "Hallo Welt!"))
+(def hello-handler-4 (make-greeting-handler "hello" "Hello, World!"))
+
+(def greeting-handler 
+    #(first-of [%] [hello-handler-4 hallo-handler]))
+
+(greeting-handler {:uri "/hallo"}) ; =&gt; {:status 200, 
+                                   ;     :headers {}, 
+                                   ;     :body "Hallo Welt!"}
+(greeting-handler {:uri "/hello"})  ; =&gt; {:status 200, 
+                                    ;    :headers {}, 
+                                    ;    :body "Hello, World!"}
+(greeting-handler {:uri "/gidday"}) ; =&gt; nil
+</code></pre>
+<p>
+This variation shows how applications can be composed of other applications. We use <a href="http://clojuredocs.org/clojure_core/clojure.core/constantly"><code>constantly</code></a> to generate a static handler around a response; We have a factory function that generates new handlers already wrapped with a middleware, and then lastly we compose a couple of applications together into one application using the <code>first-of</code> combinator we defined<sup>i</sup>.
+</p>
+
+<div class="punchout">
+    <h4><code>nil</code> Responses</h4>
+    <p>
+    The definition and use of <code>first-of</code> takes advantage of a feature 
+    of Ring that isn't mentioned in the spec but is none the less idiomatic: Any 
+    ring handler may return <code>nil</code> instead of a response map; If the 
+    top level handler returns <code>nil</code>, then Ring generates a (basic) 
+    404 handler. This can be used (as we have done here) to define handlers that 
+    compose easily.
+    </p>
+</div>
+<p>
+We will return to this simple example later to examine more expressive tools for processing routes and creating responses. Next though, we need to look at how to actually connect our simple hello application to a web server.
+</p>
+
+<div class="punchout">
+    <h4>Response Body</h4>
+    <p>
+    A brief aside on the <code>:body</code> property of the response map: So far we have just returned <code>strings</code> as the body. However, Ring allows any of <code>String</code>, <code>ISeq</code>, <code>File</code> or <code>InputStream</code>. Check out the spec for more details.
+    </p>
+</div>
+
+<h3>Servers and Adapters</h3>
+
+<p>
+So far we have been examining how the <em>Application</em> layer is created with Ring. We know how to define handlers and middleware and how to compose them to create interesting applications. The adapter is responsible for not only connecting a handler to a server, but for abstracting away the details of that particular server. As a result each adapter can vary quite a bit in the details of how it is implemented and used.
+</p>
+
+
+There are roughly three models for how your application may be connected to the server and outside world:
+
+
+<ul>
+    <li>
+        Host an HTTP server, such as Jetty, internally as part of your 
+        application. This adapter can be found in 
+        <code>ring.adapter.jetty</code> which is part of the Ring project.
+    </li>
+    <li>
+        Host your application as a servlet inside a container such as Tomcat.
+        This adapter can be found in <code>ring.util.servlet</code> which is 
+        part of the Ring project.
+    </li>
+    <li>
+        Talk over some protocol to an web server outside your JVM, such as 
+        Mongrel2 over 0MQ. Mongrel2 is currently supported via <a href="https://github.com/mikejs/ring/tree/master/ring-mongrel2-adapter/"><code>ring‑mongrel2‑adapter</code></a>.
+    </li>
+</ul>
+
+<p>
+You may find yourself mixing some of those approaches; e.g. hosting a Jetty 
+server inside you application and talking to an external NginX server over 
+HTTP. 
+</p>
+
+<p>
+For getting started I would suggest that you stick with an embedded Jetty, as you can trivially run it from a REPL and access it directly from your localhost. The following block of code shows how you would connect the <code>greeting‑handler</code> application from earlier to an internal Jetty:
+</p>
+<div class="punchout">
+    <strong>Dependencies:</strong> <code>[ring/ring-jetty-adapter "0.3.7"]</code>
+</div>
+<pre><code class="brush: clojure;">(use '[ring.adapter.jetty :only [run-jetty]])
+
+(defonce server (run-jetty #'greeting-handler 
+                           {:port 8000 :join? false}))
+</code></pre>
+<p>
+Visit <a href="http://localhost:8000/hello">http://localhost:8000/hello</a> and <a href="http://localhost:8000/hallo">http://localhost:8000/hallo</a> to see your application in action!
+</p>
+<p>
+The <code>#'</code> used above is known as <a href="http://clojure.org/reader">var quote</a>; this allows you rebind <code>greeting‑handler</code> in your REPL and the server will immediately reflect your changes. You can also start and stop your server from the repl with <code>(.start server)</code> and <code>(.stop server)</code>.
+</p>
+
+
+<h2>Common Stack</h2>
+<p>
+    With the nuts and bolts of Ring covered, it's time to survey the options for 
+    putting together a stack of your own.
+</p>
+<p>
+    While there is a lot of choice available to the Ring programmer, there are 
+    particular choices for various layers of the stack that are common. In 
+    particular at <em>route dispatch</em> and <em>HTML generation</em>. The 
+    following diagram expands on the one at the top of this article to show how 
+    a real application stack might look:
+</p>
+
+<ul class="stackDiagram">
+    <li class="choice">
+        <h3>HTML Generation</h3>
+        <ul>
+            <li>Enlive</li>
+            <li class="or">Hiccup</li>
+        </ul>
+        <div class="clearfix"></div>
+    </li>
+    <li>View Handlers
+        <div class="notes">
+            Application logic, database access etc. The real guts 
+            of your application.
+        </div>
+    </li>
+    <li class="choice">
+        <h3>Route Dispatch
+            </h3><div class="notes">
+                Uses URL and Method to determine view handler and parse 
+                URL fragments.
+            </div>
+        
+        <ul>
+            <li>Moustache</li>
+            <li class="or">Compojure</li>
+        </ul>
+        <div class="clearfix"></div>
+    </li>
+    <li>
+        <h3>Middleware</h3>
+        <ul>
+            <li>
+                Session Handling
+                <div class="notes">
+                    Specific implemention depends on your backend. Ring provides
+                    an in-memory solution that is appropriate for 
+                    development only.
+                </div>
+            </li>
+            <li>Form Decoding</li>
+            <li>etc…</li>
+        </ul>
+        <div class="clearfix"></div>
+    </li>
+    <li><code>ring.adapter.jetty</code></li>
+    <li>Jetty
+        <div class="notes">
+            This is a jetty server instance running inside your JVM. At the time of writing the default is Jetty 6.x.
+        </div>
+    </li>
+</ul>
+
+<h3>Route Dispatch</h3>
+<p>
+The layer I am calling <em>Route Dispatch</em> covers mapping a request to the appropriate sub handler based on (at least) the URI and HTTP method. This is like a generalized, and much more powerful, version of the combination of <code>wrap‑uri‑check</code> and <code>first‑of</code> that were presented in earlier.<sup>ii</sup>
+</p>
+<p>
+A second major feature of this layer is that these libraries provide convenient tools for unpacking the URI and binding them to names.
+</p>
+
+<h3 id="ring-intro-moustache">Moustache</h3>
+<p>
+<a href="https://github.com/cgrand/moustache">Moustache</a> wires together handlers and middleware using a route dispatch based <em>application</em> model that determines which handler to call based on the route information in the request. Secondly it provides sophisticated tools for unpacking a uris with literals, regular expression and custom validators.
+</p>
+
+<p>
+From the library user's perspective there is only one macro you need to know: <code>app</code>; This returns a new handler function that will dispatch your routes to handlers. Not only that, it will create new handlers for routes with constant results. For example the entire <a href="#ring-intro-greeter-handler"><code>greeting‑handler</code></a> is written as:
+</p>
+<div class="punchout">
+    <strong>Dependencies:</strong> <code>[moustache "1.0.0"]</code>
+</div>
+<pre id="ring-intro-greating-handler-2"><code class="brush: clojure;">(use '[net.cgrand.moustache :only [app delegate]])
+
+(def greeting-handler-2 
+    (app ["hallo"] "Hallo welt!"
+         ["hello"] "Hello, world!"))
+
+(greeting-handler-2 {:uri "/hallo"}) 
+    ; =&gt; {:status 200, 
+    ;     :headers {"Content-Type" "text/plain;charset=UTF-8"}, 
+    ;     :body "Hallo welt!"}
+
+(greeting-handler-2 {:uri "/hello"})
+    ; =&gt; {:status 200, 
+    ;     :headers {"Content-Type" "text/plain;charset=UTF-8"}, 
+    ;     :body "Hello, world!"}
+    
+(greeting-handler-2 {:uri "/"})     
+    ; =&gt; {:status 404}
+</code></pre>
+<p>
+Notice that not only is moustache making the things we were all ready doing easier it has made them more comprehensive too; We have a real 404 response for "/" and <code>Content‑Type</code> headers for the two matching routes. Most of behaviour is only present when the app is being used to generate plain text. This isnt the most useful for a real application but it is great for getting off the ground quickly.
+</p>
+<p>
+Lets extend the example to use unpack the route and look up greeting based on the word for "hello" in the route by dispatching to another handler:
+</p>
+<pre><code class="brush: clojure;">(def greetings {"hello" "Hello, world!" "hallo" "Hallo welt!"})
+
+(def greeting-handler-3 
+   (app [word] (fn [req] (when-let [greeting (greetings word)]
+                            greeting)))
+</code></pre>
+<p>
+Here we have created a new handler inline. The handler has <code>word</code> in its lexical scope and bound to the text of <code>:uri</code>. This also shows how Moustache facilitates composition of handlers: any ring handler can be the <em>Right-Hand-Side</em> of a <em>route</em>, <em>handler</em> pair in <code>app</code>. 
+</p>
+<p id="moustach-composition">
+As an example of this <code>app</code>/handler composition lets look for a moment at a super powered greeter application. This greeter provides a number of ways to get personalised hello world strings, both via http resources and XML-RPC.<sup>iii</sup> Finally, we'll create a simple middleware to make 404's cleaner.
+</p>
+
+<div class="punchout">
+    <strong>Dependencies:</strong> <code>[necessary-evil "1.1.0"]</code>
+</div>
+<pre id="ring-intro-moustache-overkill-greeter"><code class="brush: clojure;">(require '[necessary-evil.core :as xml-rpc])
+    (use '[ring.util.response :only [response]]
+         '[net.cgrand.moustache :only [app delegate]]))
+
+(def rpc-hello (xml-rpc/end-point 
+    {:hello (fn hello ([] (hello "World"))
+                      ([name] (str "Hello, " name "!")))}))
+                      
+(defn simple-greeting 
+    "A parameterised application"
+    [greeting]
+    (app [name] ["" greeting ", " name "!"]))
+
+(defn make-404
+    [req]
+    (response (str "Sorry, the resource at " 
+                   (:uri req "??") 
+                   " was not able to be located")))
+
+(defn wrap-404s
+    [handler]
+    (fn [req]
+        (let [resp (handler req)]
+            (if (or (nil? resp) (= (:status resp 404) 404))
+                (make-404 req)
+                resp))))
+
+;; clearly you wouldnt do this in the real world, but its a nice 
+;; example
+(def greeting-handler-4
+    (app wrap-404s    
+         ["formal" name] (fn [r] (response (str "How do you do," 
+                                                name "?")))
+         ["everyday" &amp; ] (simple-greeting "Hello")
+         ["casual" &amp; ] (simple-greeting "Hi")
+         ["xmlrpc"] rpc-hello))
+</code></pre>
+<p>
+This is quite a bit of code compared to previous examples, but you should be able to work out what is going on. The newly introduced constructions we have not seen before are: 
+</p>
+<ul>
+    <li>
+        The <code>xml‑rpc/end‑point</code>; This is part of 
+        <code>necessary‑evil</code> and just creates an ordinary Ring handler.
+    </li>
+    <li>
+        A parameterised <em>moustache</em> application 
+        (<code>simple‑greeting</code>). This is just returning a new handler
+        whenever it is called, binding <code>greeting</code> to its argument
+    </li>
+    <li>
+        The Moustache string sequence literal notation in 
+        <code>simple‑greeting</code>, e.g. <code>["" greeting ", " name "!"]</code>. Note the empty string <code>""</code>; this is due to a quirk in the moustache syntax. The first item in the literal vector must be a string literal.
+    </li>
+    <li>
+        The <code>&amp;</code> in routes; This allows the remainder of the route to 
+        be passed on to the RHS handler.
+    </li>
+</ul>
+
+<p>
+One quirk of moustache is that you cannot have arbitrary code on the RHS of a route pair; you must provide a handler function. However, if the handler is defined elsewhere it will not have the benefit of lexical capture of route parameters. To help with this, Moustache broadens the interface for handler functions using a utility called <code>delegate</code>. 
+</p>
+
+<p>
+<code>delegate</code> is best explained by its <a href="https://github.com/cgrand/moustache/blob/master/src/net/cgrand/moustache.clj#L172-176">definition</a> and an example:
+</p>
+<pre><code class="brush: clojure;">(defn delegate
+ "Take a function and all the normal arguments to f but the first, 
+  and returns a 1-argument fn."
+ [f &amp; args]
+  #(apply f % args))
+</code></pre>
+<p>And an example:</p>
+<pre><code class="brush: clojure;">(defn simple-greeting-2
+    [req greeting name]
+    (response (str greeting ", " name "!")))
+
+(def greeting-handler-5
+    (app wrap-404s    
+         ["formal" name] (fn [r] (response (str "How do you do," 
+                                                name "?")))
+         ["everyday" name] (delegate simple-greeting "Hello" name)
+         ["casual" name] (delegate simple-greeting "Hi" name)
+         ["xmlrpc"] rpc-hello))
+</code></pre>
+
+<p>
+I mentioned that route dispatch needs to be able to select a handler based on the HTTP method of the request. Moustache support a number of ways of handling this.  For example the following contrived handler:
+</p><p>
+</p><pre><code class="brush: clojure;">(def get-post-handler
+   (app [fragment] {:get  ["this was a get to: " fragment]
+                    :post ["this was a post to: " fragment]}))
+
+(get-post-handler {:uri "/foo" :request-method :get})
+    ; =&gt; {:status 200, 
+          :headers {"Content-Type" "text/plain;charset=UTF-8"}, 
+          :body "this was a get to: foo"}
+
+(get-post-handler {:uri "/foo" :request-method :post})
+    ; =&gt; {:status 200, 
+          :headers {"Content-Type" "text/plain;charset=UTF-8"}, 
+          :body "this was a post to: foo"}
+
+(get-post-handler {:uri "/foo" :request-method :delete})
+    ; =&gt; {:status 405, 
+          :headers {"Allow" "GET, POST"}}
+</code></pre>
+<p>
+As you can see we now are passing the <code>:request-method</code> in as a keyword. When our method matches one of the ones allowed by our route we get the responses as expected. If we supply an unsupported method (or omit it while testing) moustache returns a 405 response with the <code>Allow</code> header set to the methods that that resource <em>will</em> accept. Remember to check the <a href="http://moustache.cgrand.net/syntax.html">syntax</a> documentation and <a href="https://gist.github.com/109955">walkthrough</a> for additional ways of specifying method types.
+</p>
+
+<p>
+The last major feature of Moustache we will look at in this article is route validation. Here is a simple application that does some arithmatic, and needs to ensure that the routes are only valid when the variables are valid numbers.
+</p>
+<pre><code class="brush: clojure;">(defn integer [s]
+  "Taken from the Moustache walkthrough"
+  (try (Integer/parseInt s) (catch Exception e)))
+
+(defn math-view
+    [req op &amp; args] (response (str (apply op args))))
+ 
+(def arithmatic-app
+    (app ["add" [n integer] [m integer]] (delegate math-view + n m)
+         ["sub" [n integer] [m integer]] (delegate math-view - n m)
+         ["negate" [n integer]] (delegate math-view * -1 n)))
+
+(arithmatic-app {:uri "/add/1/2"}) ; =&gt; {:status 200, 
+                                   ;     :headers {}, 
+                                   ;     :body "3"}
+(arithmatic-app {:uri "/add/1/a"}) ; =&gt; {:status 404}
+</code></pre>
+
+<p>By now you should have a good understanding of the scope and style of moustache. 
+Definately check out the <a href="https://github.com/cgrand/moustache/blob/master/README.textile">read me</a>, <a href="http://gist.github.com/109955">walkthrough</a> and <a href="http://moustache.cgrand.net/syntax.html">syntax guide</a>. Moustache is a little weird to get started with, but the initial learn curve pays off.
+</p>
+
+<h3>Compojure</h3>
+<p>
+Like Moustach <a href="https://github.com/weavejester/compojure/">Compojure</a>  provides route dispatching. While it performs a similar role, the approach is a little different. If you come from a Ruby web background (Sinatra in particular) a lot of Compojure may feel familiar to you.
+</p>
+<div class="punchout">
+    <strong>Caveat:</strong> I have only dabbled with Compojure, rather than implementing a full site with it like I have with Moustache. As a result aspects of this section are not as detailed as the previous.
+</div>
+
+<div class="punchout">
+    <strong>A note on versions:</strong> Compojure predates Ring and has changed dramatically over its life. When reading articles about Compojure be sure to check the publishing date and versions discussed.  
+</div>
+
+<p>
+The core of the Compojure is the <code>routes</code> macro (and the convenience form <code>defroutes</code>). <code>routes</code> performs a similar role as <code>app</code> does in Moustache <a href="#ring-intro-moustache">(see above)</a>. In addition to this macro, there are six macros that are used in combination to define routing: <code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>DELETE</code>, <code>HEAD</code>, and <code>ANY</code>. These clearly correspond to the main HTTP methods and all take the same arguments: <code>[path args &amp; body]</code>. 
+</p>
+
+<p>
+Lets re-examine <a href="#ring-intro-greating-handler-2"><code>greeting-handler-2</code></a> as a Compojure application: 
+</p>
+
+<div class="punchout">
+    <strong>Dependencies:</strong> <code>[compojure "0.6.2"]</code>
+</div>
+<pre><code class="brush: clojure;">(use 'compojure.core)
+
+(defroutes greeting-handler-6
+    (ANY "/hallo" [] "Hallo welt!")
+    (ANY "/hello" [] "Hello, world!"))
+    
+(greeting-handler-6 {:uri "/hallo"}) 
+    ; =&gt; {:status 200, 
+    ;     :headers {"Content-Type" "text/html"}, 
+    ;     :body "Hallo welt!"}
+
+(greeting-handler-6 {:uri "/hello"}) 
+    ; =&gt; {:status 200, 
+    ;     :headers {"Content-Type" "text/html"}, 
+    ;     :body "Hello, world!"}
+    
+(greeting-handler-6 {:uri "/"})     
+    ; =&gt; nil</code></pre>
+
+<p>
+If you worked through the Moustache section above, this will be familiar. As you can see, the <code>greeting-handler-6</code> defines two routes, <code>/hallo</code> and <code>/hello</code>. Each of these responds to any HTTP method and returns a constant string response. The empty vector is the arguments for local bindings of the <code>request</code> and any variables destructured from the path. Because the routes here are returning constant values this has been left empty. Like Moustache, the first matching route is the one that responsds.
+</p>
+
+<p>
+Aside from the definition of the routes, the handling of URIs that are not specified in the routes is the biggest difference. This can specifically handled with the <code>compojure.route/not-found</code> utility function:
+</p>
+
+<pre><code class="brush: clojure;">(require '[compojure.route :as route])
+    
+(defroutes greeting-handler-6
+    (ANY "/hallo" [] "Hallo welt!")
+    (ANY "/hello" [] "Hello, world!")
+    (route/not-found "Four Oh Four"))
+</code></pre>
+<p>
+It is important that <code>not-found</code> is the last route in your configuration as it will match any and every request that has not otherwise been handled.
+</p>
+<p>
+The <a href="https://github.com/weavejester/compojure/blob/master/src/compojure/route.clj#L34-40">definition</a> of <code>not-found</code> is clear and simple example of composition in Compojure:
+</p>
+<pre><code class="brush: clojure;">(defn not-found
+  "A route that returns a 404 not found response, with its argument 
+  as the response body."
+  [body]
+  (routes
+    (HEAD "*" [] {:status 404})
+    (ANY "*" [] {:status 404, :body body})))
+</code></pre>
+
+<p>
+We know that <code>route</code> returns a new ring handler (afterall, we have been using a route as a ring handler in the previous examples). This route uses a wildcard route to match every request that comes in regardless of <code>:uri</code>. <code>HEAD</code> is special cased (to not return a body), otherwise any other method is caught by the <code>ANY</code> route. As you can see, the body of a rule is allowed to be a raw Ring response map.</p>
+
+<p>
+This parametric handler generation follows the same pattern we saw previous <a href="#moustach-composition">with Moustache</a>. Lets look at another example by porting the <a href="#ring-intro-moustache-overkill-greeter">overkill greeter app</a> from Moustache to Compojure:
+</p>
+
+<div class="punchout">
+    <strong>Dependencies:</strong> <code>[necessary-evil "1.1.0"]</code>
+</div>
+<pre><code class="brush: clojure;">(require '[necessary-evil.core :as xml-rpc])
+    (use '[ring.util.response :only [response]])
+
+(defn dispatch 
+    "dispatch is takes a handler and a new uri and returns a new handler"
+    [uri handler] 
+        (fn [req] (handler (assoc req :uri uri))))
+
+(def rpc-hello (xml-rpc/end-point 
+    {:hello (fn hello ([] (hello "World"))
+                      ([name] (str "Hello, " name "!")))}))
+                      
+(defn simple-greeting-3 
+    "A parameterised application"
+    [greeting]
+    (routes (ANY "/:name" [name] (str greeting ", " name "!"))))
+
+(defroutes greeting-handler-7
+    (ANY "/formal/:name" [name] 
+       (response (str "How do you do," name "?")))
+    (ANY "/everyday*" [*] (dispatch * (simple-greeting-3 "Hello")))
+    (ANY "/casual*" [*] (dispatch * (simple-greeting-3 "Hi")))
+    (ANY "/xmlrpc" [] rpc-hello)
+    (route/not-found "Nope; not here."))
+</code></pre>
+<del datetime="2011-06-07T19:44:00+12"><p>
+The biggest difference between the two versions of this code is the introduction 
+of the <code>dispatch</code> function. To the best of my knowledge there is no Compojure specific way of doing this. This does however demonstrate a difference between Moustache and Compojure: Moustache modifies the <code>:uri</code> of the request for us when it matches, and Compojure does not. 
+</p>
+</del>
+<p>
+<strong>Updated, 7 June 2011:</strong>
+<a href="http://weavejester.com/">James Reeves</a> (author of Compojure and Ring contributer) provided the <a href="http://www.reddit.com/r/Clojure/comments/hqooc/a_not_so_brief_overview_of_the_clojure_webstack/c1xjzzu">following correction</a> to my claim above and the corrected code snippet:
+</p>
+<blockquote>There is, in the recently-introduced <code>context</code> macro. However, it appears that this isn't a well-known feature.
+<pre><code class="brush: clojure;">(require '[necessary-evil.core :as xml-rpc])
+
+(def rpc-hello (xml-rpc/end-point 
+  {:hello (fn hello ([] (hello "World"))
+                    ([name] (str "Hello, " name "!")))}))
+
+(defn simple-greeting-3 
+  "A parameterised application"
+  [greeting]
+  (ANY "/:name" [name] (str greeting ", " name "!")))
+
+(defroutes greeting-handler-7
+  (ANY "/formal/:name" [name] 
+    (str "How do you do," name "?"))
+  (context "/everyday" [] (simple-greeting-3 "Hello"))
+  (context "/casual" [] (simple-greeting-3 "Hi"))
+  (ANY "/xmlrpc" [] rpc-hello)
+  (route/not-found "Nope; not here."))
+</code></pre>
+</blockquote>
+
+<p>
+This example also shows some of the routing patterns that Compojure uses for matching. Compojure uses a library called <a href="https://github.com/weavejester/clout">Clout</a> under the hood to handle route matching.
+</p>
+
+<p>
+Finally, Compojure allows complex forms as the body of a route. This form also has an implicit <code>do</code>. This is probably the biggest casual differentiator between Moustache and Compojure.  I recommend examining the <a href="https://github.com/weavejester/compojure/blob/master/src/compojure/response.clj#L9-34">implemetation</a> of the <code>render</code> function to learn more about the various things you can return from a route body.
+</p>
+
+<h4>Route Dispatch Summary</h4>
+<p>
+As you can see from the brief surveys of Moustache and Compojure, they provide a similar range of features. While my preference is for Moustache, either is a good choice and switching between them is relatively trivial. 
+</p>
+<p>
+Compojure is more popular and has a more natural syntax to get started with, the cost is that its a some impedance mismatch with composing apps with other Ring libraries. Moustache is conceptually simple and fits nicely into the Ring ecosystem but at the cost of some slightly surprising syntax at times. Neither has particular comprehensive documentation. If you are very new to Clojure or web development, Compojure might be a better choice. Otherwise my suggestion is to choose the one that seems most straight forward to you.
+</p>
+
+<h3>HTML Generation</h3>
+<p>
+HTML Generation is a core requirement of most web applications (see below for notes on JSON). We will briefly survey the two main candidates.
+</p>
+
+<h3>Enlive</h3>
+<p>
+<a href="https://github.com/cgrand/enlive">Enlive</a> is a fantastic library from Christophe Grand who also created Moustache (see above). Instead of trying to cover it myself, I suggest that you read (and work) through David Nolen's in-depth <a href="https://github.com/swannodette/enlive-tutorial">tutorial</a>.  
+</p>
+<p>
+Enlive has a steeper learning curve than the common alternative (Hiccup, see below) but it is, in my opinion, a superior library. Firstly, in addition to just generating HTML, you can use the same tools to manipulate existing documents. For example David Nolen's tutorial starts out using enlive to scrap web pages. Secondly, the seperation between templates and code is clearer than in any tool I have used: the HTML files are pure HTML, no additional markup, and are manipulated with CSS-like selectors. 
+</p>
+<div class="punchout">
+<strong>A note on teams:</strong> There is a popular idea that enlive is better when you have a team with seperate people in designer and developer roles, and hiccup is better for the one person does it all application. I disagree however, as working iteratively on the design is much easier as I can edit the html and css in textmate (despite using emacs for my Clojure code) and use the built in webkit preview to see my changes without having to reload anything, or have an application running.
+</div>
+
+<h3>Hiccup</h3>
+<p>
+<a href="https://github.com/weavejester/hiccup">Hiccup</a> is at the complete opposite end of the spectrum from Enlive: everything exists in Clojure code and there are no external template files. Hiccup is a DSL built around a single macro: <code>html</code>. The macro takes zero or more forms which may be either literal text, vectors representing elements or lists which are executed. The following example illustrates how this works:
+</p>
+
+<div class="punchout">
+    <strong>Dependencies:</strong> <code>[hiccup "0.3.4"]</code>
+</div>
+<pre><code class="brush: clojure;">(use 'hiccup.core)
+
+; literals:
+(html "Hello, world!") 
+    ; =&gt; "Hello, world!"
+
+(html 1)
+    ; =&gt; "1"
+
+; elements:
+(html [:p "Hello, world!"]) 
+    ; =&gt; "&lt;p&gt;Hello, world!&lt;/p&gt;"
+
+(html [:h1 "Hello," " world!"] 
+      [:p "Greetings from your computer!"])
+    ; =&gt; "&lt;h1&gt;Hello, world!&lt;/h1&gt;&lt;p&gt;Greetings from your computer!&lt;/p&gt;"
+
+; element with attributes:
+(html [:div {:class "grid_8 alpha"} 
+          [:p "Trendy grid system time"]])
+    ; =&gt; "&lt;div class=\"grid_8 alpha\"&gt;&lt;p&gt;Trendy grid system time&lt;/p&gt;&lt;/div&gt;"
+
+; the same html using the CSS like shortcuts:
+(html [:div.grid_8.alpha 
+          [:p "Trendy grid system time"]])
+    ; =&gt; "&lt;div class=\"grid_8 alpha\"&gt;&lt;p&gt;Trendy grid system time&lt;/p&gt;&lt;/div&gt;"
+    
+; calling functions:
+(html (interpose " " (range 5)))
+    ; =&gt; "0 1 2 3 4"
+    
+(html [:ul (map (fn [name] [:li name]) 
+                ["Croaker" "Raven" "Murgen" "One-Eye"])])
+    ; =&gt; "&lt;ul&gt;&lt;li&gt;Croaker&lt;/li&gt;&lt;li&gt;Raven&lt;/li&gt;&lt;li&gt;Murgen&lt;/li&gt;&lt;li&gt;One-Eye&lt;/li&gt;&lt;/ul&gt;"    
+
+</code></pre>
+
+<p>
+This example highlights basicly everything you need to get going with hiccup. You can see that is extremely simple and allows straight forward composition of elements. 
+</p>
+<p>
+One thing to watch out with hiccup is that content is not escaped by default; you need wrap it in <code>escape-html</code> or its alias <code>h</code>. This is an unfortunate default that you definately need to be aware of if you choose to use hiccup.    
+</p>
+<pre><code class="brush: clojure;">(html "malicious content: &lt;script&gt;while (true) { /* uh oh */ }&lt;/script&gt;")
+    ; =&gt; "malicious content: &lt;script&gt;while (true) { /* uh oh */ }&lt;/script&gt;"
+
+(html (escape-html "malicious content: &lt;script&gt;while (true) { /* uh oh */ }&lt;/script&gt;"))
+    ; =&gt; "malicious content: &amp;lt;script&amp;gt;while (true) { /* uh oh */ }&amp;lt;/script&amp;gt;"
+
+(html (h "malicious content: &lt;script&gt;while (true) { /* uh oh */ }&lt;/script&gt;"))
+    ; =&gt; "malicious content: &amp;lt;script&amp;gt;while (true) { /* uh oh */ }&amp;lt;/script&amp;gt;"
+</code></pre>
+
+<p>
+The code for hiccup is quite straight forward and worth your time reading at least briefly. The library has some additional middlewares and utilities for pages and forms that may make your life easier. In particular <code>hiccup.page-helpers</code> contains macros and functions for different doctypes, common elements such as includes for javascript, css, lists and images. <code>hiccup.form-helpers</code> has utility functions for most of the major form controls. Reading through these will help you get a feel for idiomatic <em>hiccup</em> code. You may also find the <a href="http://compojure.googlegroups.com/web/hiccup_cheatsheet.html?gda=ieqXl0gAAAAYgJf9SeyUHcyESNq8VOMSnVHIFri-xPVmWHWcBqiPX4qb7lnzYYGH2lkPt_s99BZ3Vb0rL0TI2pkQqoSDTBNYGjVgdwNi-BwrUzBGT2hOzg">Hiccup Cheatsheet</a> useful.
+</p>
+
+<h2>Other Components</h2>
+<p>
+A real web application is more than route dispatch and HTML generation. These aspects are further from ring so we will only look at the them briefly.
+</p>
+
+<h3>Database Connectivity</h3>
+<p>
+You probably want to be able to communication with a database of some description. Clojure has a wide range of options here depending on your needs. 
+</p>
+
+<p>
+There are no SQL/Relational DB <em>ORMs</em> for Clojure for obvious reasons. Depending on the amount of abstraction you want, you probably want to look at <em><code>clojure.contrib.sql</code></em> or <em>ClojureQL</em>. 
+</p>
+
+<p>
+<em>ClojureQL</em> is an implementation of relational algebra as first class Clojure functions. The most significant advantage is that it allows you to write various expressions as functions on a table and then compose them together to create the particular queries you need. Definitely worth a look. Lau Jensen has an <a href="http://bestinclass.dk/index.clj/2011/01/building-a-social-media-site.html">example site</a> on <a href="https://github.com/LauJensen/SocialSite">his GitHub</a> built with Moustache, Enlive and ClojureQL that shows how you might use ClojureQL.
+</p> 
+
+<p>
+<em><code>clojure.contrib.sql</code></em> is a relatively low level abstraction over JDBC. It is used as internally by ClojureQL.
+</p>
+
+<h3>Forms</h3>
+<p>
+This is one area that has relatively weak support currently. Decoding form data from <code>application/x-www-form-urlencoded</code>, or <code>multipart/form-data</code> encodings is provided by the core middlewares in  <code>ring.middleware.params</code> and <code>ring.middleware.multipart-params</code>. 
+</p>
+
+<p>
+The following is an extremely simple example of handling a post-back:
+</p>
+<pre><code class="brush: clojure;">(defn form-view 
+    [r] (response "&lt;html&gt;
+                     &lt;form method=\"post\"&gt;
+                        &lt;input type=\"text\" name=\"val\"&gt;
+                        &lt;input type=\"submit\"&gt;
+                     &lt;/form&gt;
+                   &lt;/html&gt;"))
+
+(defn handle-form-view 
+    [r] (response (str "&lt;html&gt;val was:" 
+                       (-&gt; r :form-params (get "val")) 
+                       "&lt;/html&gt;")))
+    
+(def ^{:doc "A very simple moustache based handler that uses wrap-params to decode a form postback"}
+     simple-form-handler 
+     (app 
+          wrap-params
+          [] {:get  form-view
+              :post handle-form-vew}))
+
+(run-jetty #'simple-form-handler {:port 8000 :join? false})                                         
+</code></pre>
+<p>Now visit <a href="http://localhost:8000/">http://localhost:8000/</a> and you should see a simple form. Enter a value and click submit and you will be taken to a page that displays 'val was:' and the value you entered.
+</p>
+<p>
+What is not supported is form validation or generation. Users of compojure may find Brenton Ashworth's <a href="https://github.com/brentonashworth/sandbar">Sandbar</a> useful. Both Enlive and Compojure/Hiccup may gain utilities for generating forms in the future<sup>iv</sup>.
+</p>
+<p>At the time of writing a collection libraries have just appeared that may fit this space: <a href="">Flutter</a> (a Hiccup based library), and <a href="https://github.com/joodie/clj-decline"><code>clj-decline</code></a>. The author, <a href="https://github.com/joodie">Joost Diepenmaat</a> has provided a <a href="https://github.com/joodie/flutter-decline-demo">demo application</a> that covers most of the details.
+</p> 
+
+
+<h3>JSON Generation</h3>
+<p>
+JSON is very straight forward in Clojure as the datastructures in JSON have a very straight-forward mapping to the core Clojure structures. The library <a href="https://github.com/mmcgrana/ring-json-params"><code>ring‑json‑params</code></a> provides a middleware to take care of decoding incoming JSON data. Mark McGranaghan has an <a href="http://mmcgrana.github.com/2010/08/clojure-rest-api.html">tutorial</a> on building simple RESTful apis using JSON that uses this middleware. Note that this was published in August 2010. 
+</p>
+
+<h3>Finding More…</h3>
+<p>
+This article has touched on a number of common components you might want to investigate, but there is probably something else that you need for your project's stack. The following are additional resources that you may find useful:     
+</p>
+
+<ul>
+    <li><a href="https://www.github.com/mmcgrana/ring/wiki/Libraries">Ring Libraries</a> — A catalog of libraries built on top of Ring on the Ring Wiki.</li> 
+    <li><a href="http://www.clojure-toolbox.com/">Clojure Toolbox</a>— A categorised directory of libraries and tools for Clojure.</li>
+    <li><a href="http://clojure.org/libraries">Clojure Libraries</a></li>
+    <li><a href="http://clojars.org">Clojars</a></li>
+</ul>
+
+<h3>See Also</h3>
+<ul>
+    <li>Mark McGranaghan: <a href="http://blip.tv/file/4706750">One Ring to Bind Them</a> – A video introducing Ring.</li>
+</ul>
+
+<h2>Glossary</h2>
+<dl>
+    <dt>Handler</dt>
+    <dd>A function that takes a <em>request</em> map and may return a <em>response</em> map.</dd>
+
+    <dt>Middleware</dt>
+    <dd>
+        A Middleware takes a <em>Handler</em> and wraps it with a new handler 
+        that interposes itself between the caller and the handler and operates 
+        on either or both of request and response.
+    </dd>
+    <dt>Adapter</dt>
+    <dd>
+        Connects a top level Ring <em>handler</em> to an HTTP Server.
+    </dd>
+</dl>
+    
+<h3>Footnotes</h3>
+<ol>
+    <li>
+        If you have come from an OO background, you may want to consider how 
+        handlers and middleware relate to the <em>Decorator</em> and 
+        <em>Composite</em> patterns. These ideas are central to building 
+        applications with Ring.
+    </li>
+    <li>
+        You should definately prefer one of these libraries to 
+        <code>wrap-uri-check</code> and <code>first-of</code>.
+    </li>
+    <li>
+        Shameless self promotion aside, you really shouldnt use xml-rpc unless a 
+        legacy client or service requires it. It does however illustrate how you 
+        can use a black box Ring handler in your application.
+    </li>
+    <li>Observant readers may note that these two components exist in different layers in my common stack diagram above.
+    </li>
+</ol>
+
+<h4>Thanks</h4>
+<p>
+    Thanks to Steven Ashley, Matt Wilson and Alex Popescu for reading over drafts and providing feedback.
+</p><p>
+</p><h4>Updates</h4>
+<h5>June 7, 2011</h5>
+<ul>
+    <li>Added James Reeve's comment about <code>context</code> in Compojure.</li>
+    <li>Corrected small errors in code snippets. Thanks to Shashy Dass for spotting these.</li>
+    <li>Corrected German “Hello World”, thanks to Philipp Steinwender for the correction.</li>
+</ul>
+</p>
+</body>
+</html>
