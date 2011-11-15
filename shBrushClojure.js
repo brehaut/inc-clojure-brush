@@ -4,7 +4,9 @@
 
 
 var ClojureBrush = (function (SH) {
+  "use strict";
   // utiliies
+  
 
   function extend(o, extension) {
     for (var k in extension) if (extension.hasOwnProperty(k)) {
@@ -22,7 +24,7 @@ var ClojureBrush = (function (SH) {
   function map(l, f) {
     var nl = [];
     for (var i = 0, j = l.length; i < j; i++) {
-      nl.push(f(l[i]));
+      nl[i] = f(l[i]);
     }
     return nl;
   }
@@ -30,7 +32,7 @@ var ClojureBrush = (function (SH) {
   function filter(l, f) {
     var nl = [];
     for (var i = 0, j = l.length; i < j; i++) {
-      if (f(l[i])) nl.push(l[i]);
+      if (f(l[i])) nl[nl.length] = l[i];
     }
     return nl;
   }
@@ -49,17 +51,6 @@ var ClojureBrush = (function (SH) {
     this.length = length || value.length;
     this.tag = tag;
   }
-  Token.prototype = {
-    clone: function () {
-      return new Token(this.value, this.index, this.tag, this.length);
-    },
-    
-    toMatches: function () {
-      var m = object(this);
-      if (!this.css) m.css = this.tag;
-      return [m];
-    }
-  };
   
   /* LispNodes are aggregate nodes for sexpressions. 
    *
@@ -74,33 +65,9 @@ var ClojureBrush = (function (SH) {
     this.opening = opening; // the token that opens this form.
     this.closing = closing; // the token that closes this form.
     
-    this.depth = parent.depth + 1;
+    this.depth = parent ? (parent.depth + 1) : 0;
   };
-  LispNode.prototype = {
-    clone: function () {
-      return new LispNode(this.tag, this.parent, 
-                          this.list.slice(),
-                          object(opening), object(closing));
-    },
-    /* SyntaxHighlighter expects Match shaped objects; Each node 
-     * knows how to produce an array of Match objects on demand.
-     *
-     * A match must contain:
-     *   value :: String
-     *   index :: Int 
-     *   length :: Int
-     *   css :: String
-     *
-     * Some nodes may use specalised toMatches methods to produce specalised
-     * sets of matches.
-     */
-    toMatches: function () {
-      return [this.opening].concat(mapcat(this.list, function (node) {
-        return node.toMatches();
-      }), [this.closing]);
-    }
-  };
-  
+
   
   function MetaNode(meta_token, meta_form, parent) {
     if (!(this instanceof MetaNode)) 
@@ -110,91 +77,89 @@ var ClojureBrush = (function (SH) {
     this.meta_form = meta_form;
     this.parent = parent;
   }
-  MetaNode.prototype = {
-    clone: function () {
-      return new MetaNode(this.meta_token, this.meta_form, this.parent);
-    },
-    
-    toMatches: function () {
-      return [].concat(this.meta_token.toMatches(), this.meta_form.toMatches());
-    }
-  };
+
   
   
   // tokenize
 
-  function one_of () {
-    var args = arguments;
-    return function (s) {
-      for (var i = 0; i < args.length; i++) {
-        var prefix = args[i];
-        if ((s.slice(0, prefix.length) == prefix)) {
-          return {value: args[i], tag: args[i]};
-        }
+  function one_of (s, args) {
+    for (var i = 0; i < args.length; i++) {
+      var prefix = args[i];
+      if ((s.slice(0, prefix.length) === prefix)) {
+        return args[i];
       }
-    };
-  }
-
-  function re (re, tag) {
-    return function (s) {
-      var match = s.match(re);
-      if (match != null) return {value:match[0], tag:tag};
     }
   }
+
 
   function tokenize (code) {
     var tokens = [];
 
     var match = null;
     var idx = 0;
+    var t = null;
+    var nextTokenIdx = 0;
+    var l = 0;
+    
+    var multiline_string_regexp = new XRegExp('^"([^\\\\"]|\\\\.)*"', 'gs');
+    var comments_regexp = new RegExp('^;.*$', 'gm');
 
-    var rules = [
-      re(/^\\(newline|space|tab|.)/, "value"),
-      re(/^[+-]?\d+([r.\/]\d+|M)?/, "value"),   
-    
-      re(/^#"(?:\.|(\\\")|[^\""\n])*"/g, "string"), // regexp
-      re(new XRegExp('^"([^\\\\"]|\\\\.)*"', 'gs'), "string"),
-    
-      re(/^[-_a-z*?!.><|&%][-_a-z*?!.><|&%0-9\/]*/i, "symbol"),
-      re(/^:?[-a-z*?!.><|&%][-a-z*?!.><|&%0-9\/]*/i, "keyword"),
-      one_of("#(", ")", "(", ")", "#{", "{", "}", "[", "]", "^", "@"),  
-      re(/^[\s,]+/, "whitespace"),  
-      re(new RegExp('^;.*$', 'gm'), "comments"),                           
-    
-      function (s) {   // just eat everything that remains
-        return { value:s[0], tag:"invalid" };
-      }
-    ];
-    
-    var prev = null;
     while (code.length) {
       match = null;
-      for (var i = 0; i < rules.length; i++) {
-        if (match = rules[i](code)) {
-          var l = match.value.length;
-          var t = Token(match.value, idx, match.tag, l);
-          tokens.push(t); 
-          idx += l;
-          code = code.slice(l);
-          break;
-        }
+
+      if (match = code.match(/^\\(newline|space|tab|.)/)) { // characters
+        l = match[0].length;
+        t = new Token(match[0], idx, "value", l);
       }
+      else if (match = code.match(/^[+-]?\d+([r.\/]\d+|M)?/)) { // numbers
+        l = match[0].length;
+        t = new Token(match[0], idx, "value", l);        
+      } 
+      else if (match = code.match(/^#"(?:\.|(\\\")|[^\""\n])*"/g)) { // regexps
+        l = match[0].length;
+        t = new Token(match[0], idx, "string", l);                
+      }
+      else if (match = code.match(multiline_string_regexp)) { // strings
+        l = match[0].length;
+        t = new Token(match[0], idx, "string", l);                
+      }
+      else if (match = code.match(/^:?[-_a-z*?!.><|&%][-_a-z*?!.><|&%0-9\/]*/i)) {// sym and key
+        l = match[0].length;
+        t = new Token(match[0], idx, match[0][0] === ":" ? "keyword" : "symbol", l);
+      }
+      else if (match = one_of(code, ["#(", "(", ")", 
+                                     "#{", "{", "}", 
+                                     "[", "]", "^", 
+                                     "@"])) {
+        l = match.length;
+        t = new Token(match, idx, match, l);                                
+      }
+      else if (match = code.match(/^[\s,]+/)) { // whitespace
+        l = match[0].length;
+        t = new Token(match[0], idx, "whitespace", l);
+      }
+      else if (match = code.match(comments_regexp)) { // comments
+        l = match[0].length;
+        t = new Token(match[0], idx, "comments", l);        
+      }
+      else {
+        l = 1;
+        t = new Token(code[0], idx, "invalid", 1);
+      }
+      
+      idx += l;
+      code = code.slice(l);
+      tokens[nextTokenIdx++] = t;
     }
 
     return tokens;
   }
 
-  function ignore_whitespace(tokens) {
-      return filter(tokens, function (token) { 
-        return !(token.tag == "whitespace"
-                 || token.tag == "comments");
-      });
-  }
 
   function new_scope(parent, opening_token, scope_type) {
     var scope = new LispNode(scope_type, parent, [], opening_token, null);
   
-    parent.list.push(scope);
+    if (parent) parent.list[parent.list.length] = scope;
   
     return scope;  
   }
@@ -216,7 +181,7 @@ var ClojureBrush = (function (SH) {
   }
 
   function build_sexps(tokens) {
-    var current = {
+    var toplevel = {
       list: [], 
       tag: "toplevel", 
       parent: null, 
@@ -224,8 +189,10 @@ var ClojureBrush = (function (SH) {
       closing: null,
       depth: -1
     };
+    var current = toplevel;
 
     for (var i = 0, j = tokens.length; i < j; i++) {
+      if (current == null) debugger 
       var t = tokens[i];
       switch (t.tag) {
         case "^":
@@ -254,33 +221,28 @@ var ClojureBrush = (function (SH) {
         case "]":
         case "}":              
           current.closing = t;
-          current = current.parent;
+          // dont let the top level from pop off just because someone put too many closing 
+          // parens in their forms
+          if (current.parent) current = current.parent; 
           break;
         
         default:
           current.list.push(t);
       }
     }
-  
-    return current;
-  }
-
-  function clone_exp (exp) {
-    var n = object(exp);
-    n.list = exp.list.slice();
-    return n;
+    return toplevel;
   }
 
   // annotation rules to apply to a form based on its head
 
   function annotate_destructuring (exp) {
     if (exp.list) {
-      if (exp.tag == "vector") {
+      if (exp.tag === "vector") {
         for (var i = 0; i < exp.list.length; i++) {
           annotate_destructuring(exp.list[i]);
         }
       } 
-      else if (exp.tag == "map") {
+      else if (exp.tag === "map") {
         for (var i = 0; i < exp.list.length; i += 2) {
           annotate_destructuring(exp.list[i]);
           exp.list[i + 1].css = "plain";
@@ -292,56 +254,36 @@ var ClojureBrush = (function (SH) {
   }
 
   function annotate_arguments (exp) {
-    var n = clone_exp(exp);
-  
-    return n; 
+    return exp; 
   }
 
   function _annotate_binding_vector (exp, special_cases) {
     if (exp.tag != "vector") return exp;
     special_cases = special_cases || function (name, exp) {};
   
-    var n = clone_exp(exp);
-    var bindings = [];
-    
-    for (var i = 0; i < n.list.length; i ++) {
-      /*if (n.list[i].tag != "comments") */bindings.push(n.list[i]);
-    }
-    
-    if (bindings.length % 2 == 1) return exp;
+    var bindings = exp.list;
+
+    if (bindings.length % 2 === 1) return exp;
     
     for (var i = 0; i < bindings.length; i += 2) {
       annotate_destructuring(bindings[i]);
       annotate_expressions(bindings[i + 1]);
       special_cases(bindings[i], bindings[i + 1]);
     }
-    return exp;
   }
 
   function annotate_binding (exp) {
-    var n = clone_exp(exp);
-  
     var bindings = exp.list[1];
     if (bindings) {
-      n.list[1] = _annotate_binding_vector(bindings);
+      _annotate_binding_vector(bindings);
     }
-  
-    return n;
   }
 
   function annotate_comprehension (exp) {
-    var n = clone_exp(exp);
-  
     var bindings = exp.list[1];
     if (bindings) {
-      n.list[1] = _annotate_binding_vector(bindings, function (name, exp) {
-        if (name.tag == "keyword" && (name.value == ":when" || name.value == ":let")) {
-          name.css = "functions";
-        }
-      });
+      _annotate_binding_vector(bindings);
     }
-  
-    return n;
   }
 
   var annotation_rules = (function () {
@@ -357,44 +299,41 @@ var ClojureBrush = (function (SH) {
   })(
     ["comment"],  
     function annotate_comment(exp) {
-      var n = clone_exp(exp);
-      n.tag = "comments";
-      n.opening.css = "comments";
-      n.closing.css = "comments";
-      n.list = [];
+      exp.tag = "comments";
+      exp.opening.css = "comments";
+      exp.closing.css = "comments";
       for (var i = 0; i < exp.list.length; i++) {
         var child = exp.list[i];
-        n.list.push(child.list 
-                     ? annotate_comment(child)
-                     : extend(object(child), { css: "comments" }));
+        if (child.list) {
+          annotate_comment(child);
+        }
+        else {
+          extend(object(child), { css: "comments" });
+        }
       }
-      return n;
+      return exp;
     },
   
-    ["let", "binding"], annotate_binding,
-    ["doseq", "for", "domonad"], annotate_comprehension
+    ["let", "binding", "doseq", "for", "domonad"], annotate_binding
   );
 
 
   function annotate_expressions(exp) {
-    var n = object(exp);
-
     switch (exp.tag) {
       case "toplevel": 
-        n.list = [];
         for (var i = 0; i < exp.list.length; i++) {
-          n.list.push(annotate_expressions(exp.list[i]));
+          annotate_expressions(exp.list[i]);
         }
         break;
       
       case "list": // functions, macros, special forms, comments
-        n.opening.css = n.closing.css = "rainbow" + ((exp.depth % 5) + 1);;
-        
+        exp.opening.css = "rainbow" + ((exp.depth % 5) + 1);
+        if (exp.closing) exp.closing.css = exp.opening.css;
         var head = exp.list[0];
       
         if (head) {
           if (head.tag.match(/list|vector|map/)) {
-            head = annotate_expressions(head);
+            annotate_expressions(head);
           }
           else {
             if (head.value.match(/(^\.)|(\.$)|[A-Z].*\//)) {
@@ -405,18 +344,17 @@ var ClojureBrush = (function (SH) {
             }
           }
           
-          n.list = [head];
           for (var i = 1; i < exp.list.length; i++) {
-            n.list.push(annotate_expressions(exp.list[i]));
+            annotate_expressions(exp.list[i]);
           }
 
           // apply specific rules
           if (annotation_rules.hasOwnProperty(head.value)) {
-            return annotation_rules[head.value](n);
+            annotation_rules[head.value](exp);
           }       
         }
         else { // empty list
-          n.opening.css = n.closing.css = "constants";
+          exp.opening.css = exp.closing.css = "constants";
         }
       
         break;
@@ -424,27 +362,24 @@ var ClojureBrush = (function (SH) {
       case "vector": // data
       case "map":
       case "set":
-        n.list = [];
-        n.opening.css = "keyword";
-        n.closing.css = "keyword";
+        exp.opening.css = "keyword";
+        if (exp.closing) exp.closing.css = "keyword";
         for (var i = 0; i < exp.list.length; i++) {
-          n.list.push(annotate_expressions(exp.list[i]));
+          annotate_expressions(exp.list[i]);
         }
         break;
         
       case "symbol":
         if (exp.value.match(/[A-Z].*\/[A-Z_]+/)) {
-          n.tag = "constants";
-          n.css = "constants";
+          exp.tag = "constants";
+          exp.css = "constants";
         }
         break;
     
       case "keyword":
-        n.css = "constants";
+        exp.css = "constants";
         break;
     }
-  
-    return n;
   }
 
   function flatten_to_buffer(exp, buffer) {
@@ -464,40 +399,27 @@ var ClojureBrush = (function (SH) {
 
   SH.brushes.Clojure = function () {
 
-    this.findMatches = function (regexpList, code) {
+    this.findMatches = function find_matches (regexpList, code) {
+      console.profile();
       var tokens = tokenize(code);
       
       // seperate out interesting and uninteresting tokens; we want to highlight
       // comments and whitespace correctly but it just gets in the way of sexp processing
       var interesting = filter(tokens, function (token) { 
-        return !(token.tag == "whitespace"
-                 || token.tag == "comments");
-      });
-      var uninteresting = filter(tokens, function (token) { 
-        return (token.tag == "whitespace"
-                || token.tag == "comments");
+        return !(token.tag === "whitespace"
+                 || token.tag === "comments"
+                 || token.tag === "invalid");
       });
 
       var sexps = build_sexps(interesting);
-      
-      var buffer = uninteresting;//[];
-      flatten_to_buffer(annotate_expressions(sexps), buffer);
-      
-      buffer = map(buffer, function (token) {
+      annotate_expressions(sexps)
+      console.profileEnd();
+      return map(tokens, function (token) {
         if (!token.css) {
           return extend(object(token), {css: token.tag});
         }
         return token;
       });
-    
-      // need to ensure that the resulting tokens are in order
-      buffer.sort(function(a,b) {
-        if (a.index == b.index) return 0;
-        if (a.index < b.index) return -1;
-        return 1;
-      });
-    
-      return buffer;
     };
   
   }

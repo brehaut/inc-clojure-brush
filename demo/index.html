@@ -15,7 +15,9 @@
       .syntaxhighlighter .rainbow5 { color: #089 !important } 
     </style>
 
-    <script type="text/javascript">SyntaxHighlighter.all();</script>
+    <script type="text/javascript">
+    SyntaxHighlighter.all();
+    </script>
 </head>
 
 <body style="background: white; font-family: Helvetica">
@@ -43,8 +45,6 @@
  a)
 
 (let [a #{1 2 3}
-      :let [b (dec a)] ; :let and :when should not be highlighted
-      :when (zero? b)  ; in a let (or binding)
       [x y] (list 1 2)
       {a :key1} (into {} [[:key1 1] [:b 2]])]
  a)
