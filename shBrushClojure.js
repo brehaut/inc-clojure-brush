@@ -83,50 +83,10 @@ var ClojureBrush = (function (SH) {
   
   // tokenize
 
-  // function one_of (s, args) {
-  //   for (var i = 0; i < args.length; i++) {
-  //     var prefix = args[i];
-  //     if ((s.slice(0, prefix.length) === prefix)) {
-  //       return args[i];
-  //     }
-  //   }
-  // }
-  //
-  //
-  // function tokenize (code) {
-  //   var tokens = [];
-  // 
-  //   var match = null;
-  //   var idx = 0;
-  //   var t = null;
-  //   var nextTokenIdx = 0;
-  //   var l = 0;
-  //   
-  //   var multiline_string_regexp = new XRegExp('^"([^\\\\"]|\\\\.)*"', 'gs');
-  //   var comments_regexp = new RegExp('^;.*$', 'gm');
-  // 
-  //   while (code.length) {
-  //     match = null;
   // 
   //     if (match = code.match(/^\\(newline|space|tab|.)/)) { // characters
   //       l = match[0].length;
   //       t = new Token(match[0], idx, "value", l);
-  //     }
-  //     else if (match = code.match(/^[+-]?\d+([r.\/]\d+|M)?/)) { // numbers
-  //       l = match[0].length;
-  //       t = new Token(match[0], idx, "value", l);        
-  //     } 
-  //     else if (match = code.match(/^#"(?:\.|(\\\")|[^\""\n])*"/g)) { // regexps
-  //       l = match[0].length;
-  //       t = new Token(match[0], idx, "string", l);                
-  //     }
-  //     else if (match = code.match(multiline_string_regexp)) { // strings
-  //       l = match[0].length;
-  //       t = new Token(match[0], idx, "string", l);                
-  //     }
-  //     else if (match = code.match(/^:?[-_a-z*?!.><|&%][-_a-z*?!.><|&%0-9\/]*/i)) {// sym and key
-  //       l = match[0].length;
-  //       t = new Token(match[0], idx, match[0][0] === ":" ? "keyword" : "symbol", l);
   //     }
   //     else if (match = one_of(code, ["#(", "(", ")", 
   //                                    "#{", "{", "}", 
@@ -135,26 +95,10 @@ var ClojureBrush = (function (SH) {
   //       l = match.length;
   //       t = new Token(match, idx, match, l);                                
   //     }
-  //     else if (match = code.match(/^[\s,]+/)) { // whitespace
-  //       l = match[0].length;
-  //       t = new Token(match[0], idx, "whitespace", l);
-  //     }
   //     else if (match = code.match(comments_regexp)) { // comments
   //       l = match[0].length;
   //       t = new Token(match[0], idx, "comments", l);        
   //     }
-  //     else {
-  //       l = 1;
-  //       t = new Token(code[0], idx, "invalid", 1);
-  //     }
-  //     
-  //     idx += l;
-  //     code = code.slice(l);
-  //     tokens[nextTokenIdx++] = t;
-  //   }
-  // 
-  //   return tokens;
-  // }
 
   function tokenize(code) {
     //function Token(a,b,c,d) { this.toString = function () { return [a,b,c,d].join(":"); } };
@@ -219,10 +163,15 @@ var ClojureBrush = (function (SH) {
         // complicated terms
         case "\"": // strings and regexps
           for (extent++; extent <= j; extent++) {
-            if (code[extent] == "\\") extent++;
-            else if (code[extent] == "\"") break;
+            if (code[extent] === "\\") extent++;
+            else if (code[extent] === "\"") break;
           }
           tokens[tn++] = new Token(code.slice(i, ++extent), i, dispatch ? "regexp" : "string", extent - i);       
+          break;
+          
+        case ";":
+          for (; extent <= j && code[extent] !== "\n" && code[extent] !== "\r"; extent++);
+          tokens[tn++] = new Token(code.slice(i, ++extent), i, "comment", extent - i);   
           break;
         
         case "+": // numbers; fall through to symbol for + and - not prefixing a number
@@ -238,9 +187,9 @@ var ClojureBrush = (function (SH) {
         case "8":
         case "9":
           var c2 = code[i + 1];
-          if (((c == "+" || c == "-") && c2.match(/[0-9]/)) // prefixes
-              || (c != "+" && c != "-")) {
-            if (c == "+" || c == "-") extent++; 
+          if (((c === "+" || c === "-") && c2.match(/[0-9]/)) // prefixes
+              || (c !== "+" && c !== "-")) {
+            if (c === "+" || c === "-") extent++; 
             for (; extent <= j; extent++) {
               switch (code[extent]) {
                 case "0":
@@ -261,7 +210,7 @@ var ClojureBrush = (function (SH) {
               
             c = code[extent];
             c2 = code[extent + 1];
-            if ((c == "r" || c == "R" || c == "/" || c == ".") 
+            if ((c === "r" || c === "R" || c === "/" || c === ".") 
                 && c2.match(/[0-9]/)) {
               for (extent++; extent <= j; extent++) {
                 switch (code[extent]) {
@@ -283,14 +232,14 @@ var ClojureBrush = (function (SH) {
             }
             
             c = code[extent];
-            if (c == "N" || c == "M") extent++;
+            if (c === "N" || c === "M") extent++;
 
             tokens[tn++] = new Token(code.slice(i, extent), i, "value", extent - i);
             break;
           }
 
         case "_":
-          if (dispatch && c == "_") {
+          if (dispatch && c === "_") {
             tokens[tn++] = new Token(code.slice(i, ++extent), i, "skip", extent - i);
             break;
           } // if not a skip, fall through to symbols
@@ -311,7 +260,8 @@ var ClojureBrush = (function (SH) {
               case "#":
               case "^":
               case "`":
-              case "@":  
+              case "@":
+              case ";":    
                 break;
               default:
                 continue;
@@ -324,7 +274,7 @@ var ClojureBrush = (function (SH) {
           if (value[0] == ":") {
             tag = "keyword";
           }
-          else if (value == "true" || value == "false" || value == "nil") {
+          else if (value === "true" || value === "false" || value === "nil") {
             tag = "value";
           }
           tokens[tn++] = new Token(value, i, tag, extent - i);
