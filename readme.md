@@ -4,7 +4,7 @@
 
 This project aims to product a smarter clojure brush for [Syntax Highlighter](https://github.com/alexgorbatchev/SyntaxHighlighter) that goes further than existing efforts such as [sh-clojure](https://github.com/sattvik/sh-clojure). This brush attempts to be moderately aware of sexp forms in clojure and provide sensible highlighting rules for core forms, and hopefully guess sensibly for additional forms. 
 
-The current state of this project is a stream of consciousness javascript file. You'll need to know how to set up SyntaxHighlighter if you want to play with it (i'll get a demo setup later). 
+In addition to correctness, this brush attempts to be tolerant of squiffy code, and run as fast as it can. The brush has a hand written tokenizer that drastically outperforms the initial regexp based solution (down from 80% of total runtime in chrome and safari to between 0 and 10%).
 
 <img src="http://media.brehaut.net/files/tmp/clojure-brush.png">
 
@@ -17,11 +17,21 @@ The code is pretty hairy in a lot of places.
 ## Improvements over sh-clojure
 
  * `(comment …)` forms are correctly highlighted.
- * Doesn't need to use a list of `clojure.core` symbols; can infer from position in a form.
- * Differentiates between functions and macros, and methods and constructors.
+ * Doesn't need to use a list of `clojure.core` symbols; can infer meaning from position in a form.
+ * Differentiates between #{functions, macros}, #{methods and constructors}.
  * Knows about name binding forms such as let, binding, for, etc
- * Rainbow Parens (with appropriate CSS)
+    * Tracks locals and highlights them separately
+ * Rainbow Parens (with appropriate CSS).
+ * Approximately 7 times faster than `sh-clojure` (based on rough and ready profiling in Safari and Chrome).
+ * Handles metadata
+    * styling is supported with appropriate CSS.
 
 ### Thanks
 
+The following people supplied feedback, opinion, and critique during the development of this lib.
+
  * [Daniel Solano Gómez](http://www.deepbluelambda.org/) for his original Clojure Brush.
+ * Alan Malloy
+ * Chas Emerick
+ * Oliver Hunt 
+ * Steven Ashley

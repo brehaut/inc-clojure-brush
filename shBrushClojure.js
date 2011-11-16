@@ -64,7 +64,8 @@ var ClojureBrush = (function (SH) {
     this.list = children;   // all the child forms in order
     this.opening = opening; // the token that opens this form.
     this.closing = closing; // the token that closes this form.
-    this.meta = null;
+    this.meta = null;       // metadata nodes will be attached here if they are found
+    this.scope = {};        // any binding forms may insert names into here for locals lookup
     
     this.depth = parent ? (parent.depth + 1) : 0;
   };
@@ -87,17 +88,6 @@ var ClojureBrush = (function (SH) {
   //     if (match = code.match(/^\\(newline|space|tab|.)/)) { // characters
   //       l = match[0].length;
   //       t = new Token(match[0], idx, "value", l);
-  //     }
-  //     else if (match = one_of(code, ["#(", "(", ")", 
-  //                                    "#{", "{", "}", 
-  //                                    "[", "]", "^", 
-  //                                    "@"])) {
-  //       l = match.length;
-  //       t = new Token(match, idx, match, l);                                
-  //     }
-  //     else if (match = code.match(comments_regexp)) { // comments
-  //       l = match[0].length;
-  //       t = new Token(match[0], idx, "comments", l);        
   //     }
 
   function tokenize(code) {
@@ -160,6 +150,25 @@ var ClojureBrush = (function (SH) {
           tokens[tn++] = new Token(code.slice(i, ++extent), i, dispatch ? "#{" : "{", extent - i);
           break;  
         
+        case "\\":
+          if (code.slice(i + 1, i + 8) === "newline") {
+            tokens[tn++] = new Token("\\newline", i, "value", 8);
+            extent = i + 9; 
+          }
+          else if (code.slice(i + 1, i + 6) === "space") {
+            tokens[tn++] = new Token("\\space", i, "value", 6);
+            extent = i + 7;
+          }
+          else if (code.slice(i + 1, i + 4) === "tab") {
+            tokens[tn++] = new Token("\\tab", i, "value", 4);
+            extent = i + 5;
+          }
+          else {
+            extent += 2;
+            tokens[tn++] = new Token(code.slice(i, extent), i, "value", 2);
+          }
+          break;
+        
         // complicated terms
         case "\"": // strings and regexps
           for (extent++; extent <= j; extent++) {
@@ -171,7 +180,7 @@ var ClojureBrush = (function (SH) {
           
         case ";":
           for (; extent <= j && code[extent] !== "\n" && code[extent] !== "\r"; extent++);
-          tokens[tn++] = new Token(code.slice(i, ++extent), i, "comment", extent - i);   
+          tokens[tn++] = new Token(code.slice(i, ++extent), i, "comments", extent - i);   
           break;
         
         case "+": // numbers; fall through to symbol for + and - not prefixing a number
@@ -251,6 +260,7 @@ var ClojureBrush = (function (SH) {
               case "\t":
               case "\n":
               case "\r":
+              case "\\":
               case "{":
               case "}":
               case "(":
@@ -260,8 +270,16 @@ var ClojureBrush = (function (SH) {
               case "#":
               case "^":
               case "`":
-              case "@":
-              case ";":    
+              case "@":   
+                break;
+              case ";":   
+                // theres a weird bug via syntax highligher that gives us escaped entities.
+                // need to watch out for these
+                if (code.slice(extent-3, extent+1) === "&lt;"
+                    ||code.slice(extent-3, extent+1) === "&gt;"
+                    ||code.slice(extent-4, extent+1) === "&amp;") {
+                  continue;
+                }
                 break;
               default:
                 continue;
@@ -364,9 +382,10 @@ var ClojureBrush = (function (SH) {
           break;
         
         default:
+          t.parent = current;
           current.list.push(t);
       }
-
+      
       if (collect_next) {
         switch (t.tag) {
           case "(":
@@ -374,6 +393,7 @@ var ClojureBrush = (function (SH) {
           case "{":
           case "#{":
             pending_meta.attached_node = current;
+            current.parent.list.splice(current.parent.list.length - 1, 1); // hack
             break;
           default:
             pending_meta.attached_node = t;
@@ -391,21 +411,23 @@ var ClojureBrush = (function (SH) {
 
   // annotation rules to apply to a form based on its head
 
-  function annotate_destructuring (exp) {
+  function annotate_destructuring (exp, scope) {
     if (exp.list) {
       if (exp.tag === "vector") {
         for (var i = 0; i < exp.list.length; i++) {
-          annotate_destructuring(exp.list[i]);
+          annotate_destructuring(exp.list[i], scope);
         }
       } 
       else if (exp.tag === "map") {
         for (var i = 0; i < exp.list.length; i += 2) {
-          annotate_destructuring(exp.list[i]);
+          annotate_destructuring(exp.list[i], scope);
           exp.list[i + 1].css = "plain";
         } 
       }
-    } else {
-      exp.css ="variable";
+    } 
+    else if (exp.tag === "symbol"){
+      exp.tag = "variable";
+      scope[exp.value] = true;
     }
   }
 
@@ -413,16 +435,16 @@ var ClojureBrush = (function (SH) {
     return exp; 
   }
 
-  function _annotate_binding_vector (exp, special_cases) {
-    if (exp.tag != "vector") return exp;
+  function _annotate_binding_vector (exp, scope, special_cases) {
+    if (exp.tag != "vector") return;
     special_cases = special_cases || function (name, exp) {};
   
     var bindings = exp.list;
 
-    if (bindings.length % 2 === 1) return exp;
+    if (bindings.length % 2 === 1) return;
     
     for (var i = 0; i < bindings.length; i += 2) {
-      annotate_destructuring(bindings[i]);
+      annotate_destructuring(bindings[i], scope);
       annotate_expressions(bindings[i + 1]);
       special_cases(bindings[i], bindings[i + 1]);
     }
@@ -430,26 +452,30 @@ var ClojureBrush = (function (SH) {
 
   function annotate_binding (exp) {
     var bindings = exp.list[1];
-    if (bindings) {
-      _annotate_binding_vector(bindings);
-    }
-  }
 
-  function annotate_comprehension (exp) {
-    var bindings = exp.list[1];
     if (bindings) {
-      _annotate_binding_vector(bindings);
+      _annotate_binding_vector(bindings, exp.scope);
+    }
+    for (var i = 2; i < exp.list.length; i++) {
+      annotate_expressions(exp.list[i]);
     }
   }
   
   function _annotate_metadata_recursive(meta) {
+     annotate_expressions(meta);
+    
     if (meta && meta.list) {
       for (var i = 0, j = meta.list.length; i < j; i++) {
         _annotate_metadata_recursive(meta.list[i]);
       }
     }    
     else {
-      meta.css = "preprocessor";
+      if (meta.value.match(/([A-Z].*\/)?[A-Z_]+/)) {
+        meta.css = "color1 meta"
+      }
+      else {
+        meta.css = (meta.css || meta.tag) + " meta";
+      }   
     }
   }
   
@@ -491,6 +517,12 @@ var ClojureBrush = (function (SH) {
   
     ["let", "binding", "doseq", "for", "domonad"], annotate_binding
   );
+  
+  function is_local(exp, name) {
+    if (exp.scope && exp.scope[name]) return true;
+    if (exp.parent) return is_local(exp.parent, name);
+    return false;
+  }
 
   function annotate_expressions(exp) {
     annotate_metadata(exp);
@@ -519,15 +551,17 @@ var ClojureBrush = (function (SH) {
               head.css = "functions";
             }
           }
-          
-          for (var i = 1; i < exp.list.length; i++) {
-            annotate_expressions(exp.list[i]);
-          }
+
 
           // apply specific rules
           if (annotation_rules.hasOwnProperty(head.value)) {
             annotation_rules[head.value](exp);
-          }       
+          } 
+          else {
+            for (var i = 1; i < exp.list.length; i++) {
+              annotate_expressions(exp.list[i]);
+            }
+          } 
         }
         else { // empty list
           exp.opening.css = exp.closing.css = "constants";
@@ -548,7 +582,9 @@ var ClojureBrush = (function (SH) {
       case "symbol":
         if (exp.value.match(/[A-Z].*\/[A-Z_]+/)) {
           exp.tag = "constants";
-          exp.css = "constants";
+        }
+        else if (is_local(exp, exp.value)) {
+          exp.tag = "variable";
         }
         break;
     

@@ -4,7 +4,9 @@
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <title>(inc clojure-brush) Demo</title>
     <script type="text/javascript" src="shCore.js"></script>
+    
     <script type="text/javascript" src="../shBrushClojure.js"></script>
+    <!--script type="text/javascript" src="../oldBrush.js"></script-->
     <link type="text/css" rel="stylesheet" href="shCoreDefault.css"/>
 
     <style>
@@ -13,6 +15,10 @@
       .syntaxhighlighter .rainbow3 { color: #080 !important }
       .syntaxhighlighter .rainbow4 { color: #00A !important } 
       .syntaxhighlighter .rainbow5 { color: #089 !important } 
+      
+      .syntaxhighlighter .meta {
+          opacity: 0.75;
+      }
     </style>
 
     <script type="text/javascript">
@@ -32,10 +38,13 @@
     [1 0.1 1r2 1/2 +1 -0.2 12r23 23M]
     :b))
 
+    \a
+    \+ \newline
+    \tab
+    \space
+    
 #"regexp"
 
-\a
-\+ \newline
 (comment this is a test
    (when frobitz :asdf))
    
@@ -94,8 +103,12 @@
                  operations
                  system)))
 
+(def ^{:doc "a test of complex meta"} a-var 1)
+
 (defn reverse [s]
   (reduce cons () s))
+
+(-> {} (assoc 1 2))
 
 (java.package.Class/staticMethod 1 2)
 
@@ -105,7 +118,7 @@
 (clojure.core/.. o m1 m2)
 (... f 1 2)
 
-1
+1 true false nil
 
 </pre>
 
