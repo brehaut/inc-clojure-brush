@@ -84,19 +84,14 @@ var ClojureBrush = (function (SH) {
   
   // tokenize
 
-  // 
-  //     if (match = code.match(/^\\(newline|space|tab|.)/)) { // characters
-  //       l = match[0].length;
-  //       t = new Token(match[0], idx, "value", l);
-  //     }
-
   function tokenize(code) {
-    //function Token(a,b,c,d) { this.toString = function () { return [a,b,c,d].join(":"); } };
-    
     var tokens = [];
     var tn = 0;
     
-    var dispatch = false;
+    var zero = "0".charCodeAt(0);
+    var nine = "9".charCodeAt(0); 
+    
+    var dispatch = false; // have we just seen a # character?
     
     // i tracks the start of the current window
     // extent is the window for slicing
@@ -200,43 +195,17 @@ var ClojureBrush = (function (SH) {
               || (c !== "+" && c !== "-")) {
             if (c === "+" || c === "-") extent++; 
             for (; extent <= j; extent++) {
-              switch (code[extent]) {
-                case "0":
-                case "1":
-                case "2":
-                case "3":
-                case "4":
-                case "5":
-                case "6":
-                case "7":
-                case "8":
-                case "9":
-                  continue;
-              }
-              
-              break;
+              var charCode = code.charCodeAt(extent);
+              if (charCode < zero || charCode > nine) break;
             }
               
             c = code[extent];
             c2 = code[extent + 1];
-            if ((c === "r" || c === "R" || c === "/" || c === ".") 
+            if ((c === "r" || c === "R" || c === "/" || c === ".") // interstitial characters
                 && c2.match(/[0-9]/)) {
               for (extent++; extent <= j; extent++) {
-                switch (code[extent]) {
-                  case "0":
-                  case "1":
-                  case "2":
-                  case "3":
-                  case "4":
-                  case "5":
-                  case "6":
-                  case "7":
-                  case "8":
-                  case "9":
-                    continue;
-                }
-
-                break;
+                var charCode = code.charCodeAt(extent);
+                if (charCode < zero || charCode > nine) break;
               }
             }
             
@@ -253,6 +222,9 @@ var ClojureBrush = (function (SH) {
             break;
           } // if not a skip, fall through to symbols
         
+        // Allow just about any other symbol as a symbol. This is far more permissive than 
+        // clojure actually allows, but should catch any weirdo crap that accidentally gets
+        // into the code.
         default: 
           for (extent++; extent <= j; extent++) {
             switch (code[extent]) {
@@ -471,7 +443,7 @@ var ClojureBrush = (function (SH) {
     }    
     else {
       if (meta.value.match(/([A-Z].*\/)?[A-Z_]+/)) {
-        meta.css = "color1 meta"
+        meta.css = "color1 meta";
       }
       else {
         meta.css = (meta.css || meta.tag) + " meta";
@@ -513,9 +485,9 @@ var ClojureBrush = (function (SH) {
         }
       }
       return exp;
-    },
-  
-    ["let", "binding", "doseq", "for", "domonad"], annotate_binding
+    }
+    
+    ,["let", "binding", "doseq", "for", "domonad"], annotate_binding
   );
   
   function is_local(exp, name) {
@@ -606,22 +578,26 @@ var ClojureBrush = (function (SH) {
     
     // seperate out interesting and uninteresting tokens; we want to highlight
     // comments and whitespace correctly but it just gets in the way of sexp processing
-    var interesting = filter(tokens, function (token) { 
-      return !(token.tag === "whitespace"
-               || token.tag === "comments"
-               || token.tag === "invalid");
-    });
+    var interesting = [];
+    for (var i = 0, j = tokens.length; i < j; i++) {
+      var token = tokens[i];
+      if (!(token.tag === "whitespace"
+            || token.tag === "comments"
+            || token.tag === "invalid")) interesting[interesting.length] = token;
+    }
 
-    var sexps = build_sexps(interesting);
-    annotate_expressions(sexps)
-    console.profileEnd();
+    annotate_expressions(build_sexps(interesting));
     
-    return map(tokens, function (token) {
+    console.profileEnd();
+
+    for (i = 0; i < j; i++) {
+      var token = tokens[i];
       if (!token.css) {
         token.css = token.tag;
       }
-      return token;
-    });
+    };
+    
+    return tokens;
   };
   
   SH.brushes.Clojure.aliases   = ['clojure', 'Clojure', 'clj'];

@@ -22,9 +22,10 @@ The code is pretty hairy in a lot of places.
  * Knows about name binding forms such as let, binding, for, etc
     * Tracks locals and highlights them separately
  * Rainbow Parens (with appropriate CSS).
- * Approximately 7 times faster than `sh-clojure` (based on rough and ready profiling in Safari and Chrome).
+ * Faster than `sh-clojure` (roughly 3 times faster based on rough and ready profiling in Safari 
+   and Chrome) despite doing more.
  * Handles metadata
-    * styling is supported with appropriate CSS.
+    * Styling is supported with appropriate CSS.
 
 ### Thanks
 
