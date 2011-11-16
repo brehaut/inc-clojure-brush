@@ -285,7 +285,7 @@ var ClojureBrush = (function (SH) {
             c = code[extent];
             if (c == "N" || c == "M") extent++;
 
-            tokens[tn++] = new Token(code.slice(i, extent), i, "value", extent++ - i);
+            tokens[tn++] = new Token(code.slice(i, extent), i, "value", extent - i);
             break;
           }
 
@@ -296,7 +296,38 @@ var ClojureBrush = (function (SH) {
           } // if not a skip, fall through to symbols
         
         default: 
-          extent++;
+          for (extent++; extent <= j; extent++) {
+            switch (code[extent]) {
+              case " ":
+              case "\t":
+              case "\n":
+              case "\r":
+              case "{":
+              case "}":
+              case "(":
+              case ")":
+              case "[":
+              case "]":
+              case "#":
+              case "^":
+              case "`":
+              case "@":  
+                break;
+              default:
+                continue;
+            }
+            break;
+          }
+          
+          var value = code.slice(i, extent);
+          var tag = "symbol";
+          if (value[0] == ":") {
+            tag = "keyword";
+          }
+          else if (value == "true" || value == "false" || value == "nil") {
+            tag = "value";
+          }
+          tokens[tn++] = new Token(value, i, tag, extent - i);
       }
       
       dispatch = false;
@@ -348,6 +379,7 @@ var ClojureBrush = (function (SH) {
     
     for (var i = 0, j = tokens.length; i < j; i++) {
       var t = tokens[i];
+
       switch (t.tag) {
         case "^":
         case "#^":
@@ -501,7 +533,7 @@ var ClojureBrush = (function (SH) {
           annotate_comment(child);
         }
         else {
-          extend(object(child), { css: "comments" });
+          child.css = "comments";
         }
       }
       return exp;
@@ -600,7 +632,7 @@ var ClojureBrush = (function (SH) {
     
     return map(tokens, function (token) {
       if (!token.css) {
-        return extend(object(token), {css: token.tag});
+        token.css = token.tag;
       }
       return token;
     });
