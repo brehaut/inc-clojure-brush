@@ -25,7 +25,9 @@ The code is pretty hairy in a lot of places.
  * Faster than `sh-clojure` (roughly 3 times faster based on rough and ready profiling in Safari 
    and Chrome) despite doing more.
  * Handles metadata
-    * Styling is supported with appropriate CSS.
+    * Styling is supported with appropriate CSS. 
+ * Characters (including \newline, \tab, and \space) handled correctly.
+ * Supports radix's, and ratios in number literals.
 
 ### Thanks
 

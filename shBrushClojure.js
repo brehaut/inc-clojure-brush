@@ -180,6 +180,7 @@ var ClojureBrush = (function (SH) {
         
         case "+": // numbers; fall through to symbol for + and - not prefixing a number
         case "-":
+          extent++; // step on one so that we can test numbers correctly
         case "0":
         case "1":
         case "2":
@@ -193,12 +194,11 @@ var ClojureBrush = (function (SH) {
           var c2 = code[i + 1];
           if (((c === "+" || c === "-") && c2.match(/[0-9]/)) // prefixes
               || (c !== "+" && c !== "-")) {
-            if (c === "+" || c === "-") extent++; 
             for (; extent <= j; extent++) {
               var charCode = code.charCodeAt(extent);
               if (charCode < zero || charCode > nine) break;
             }
-              
+            
             c = code[extent];
             c2 = code[extent + 1];
             if ((c === "r" || c === "R" || c === "/" || c === ".") // interstitial characters
