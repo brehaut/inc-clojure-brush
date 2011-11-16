@@ -83,78 +83,229 @@ var ClojureBrush = (function (SH) {
   
   // tokenize
 
-  function one_of (s, args) {
-    for (var i = 0; i < args.length; i++) {
-      var prefix = args[i];
-      if ((s.slice(0, prefix.length) === prefix)) {
-        return args[i];
-      }
-    }
-  }
+  // function one_of (s, args) {
+  //   for (var i = 0; i < args.length; i++) {
+  //     var prefix = args[i];
+  //     if ((s.slice(0, prefix.length) === prefix)) {
+  //       return args[i];
+  //     }
+  //   }
+  // }
+  //
+  //
+  // function tokenize (code) {
+  //   var tokens = [];
+  // 
+  //   var match = null;
+  //   var idx = 0;
+  //   var t = null;
+  //   var nextTokenIdx = 0;
+  //   var l = 0;
+  //   
+  //   var multiline_string_regexp = new XRegExp('^"([^\\\\"]|\\\\.)*"', 'gs');
+  //   var comments_regexp = new RegExp('^;.*$', 'gm');
+  // 
+  //   while (code.length) {
+  //     match = null;
+  // 
+  //     if (match = code.match(/^\\(newline|space|tab|.)/)) { // characters
+  //       l = match[0].length;
+  //       t = new Token(match[0], idx, "value", l);
+  //     }
+  //     else if (match = code.match(/^[+-]?\d+([r.\/]\d+|M)?/)) { // numbers
+  //       l = match[0].length;
+  //       t = new Token(match[0], idx, "value", l);        
+  //     } 
+  //     else if (match = code.match(/^#"(?:\.|(\\\")|[^\""\n])*"/g)) { // regexps
+  //       l = match[0].length;
+  //       t = new Token(match[0], idx, "string", l);                
+  //     }
+  //     else if (match = code.match(multiline_string_regexp)) { // strings
+  //       l = match[0].length;
+  //       t = new Token(match[0], idx, "string", l);                
+  //     }
+  //     else if (match = code.match(/^:?[-_a-z*?!.><|&%][-_a-z*?!.><|&%0-9\/]*/i)) {// sym and key
+  //       l = match[0].length;
+  //       t = new Token(match[0], idx, match[0][0] === ":" ? "keyword" : "symbol", l);
+  //     }
+  //     else if (match = one_of(code, ["#(", "(", ")", 
+  //                                    "#{", "{", "}", 
+  //                                    "[", "]", "^", 
+  //                                    "@"])) {
+  //       l = match.length;
+  //       t = new Token(match, idx, match, l);                                
+  //     }
+  //     else if (match = code.match(/^[\s,]+/)) { // whitespace
+  //       l = match[0].length;
+  //       t = new Token(match[0], idx, "whitespace", l);
+  //     }
+  //     else if (match = code.match(comments_regexp)) { // comments
+  //       l = match[0].length;
+  //       t = new Token(match[0], idx, "comments", l);        
+  //     }
+  //     else {
+  //       l = 1;
+  //       t = new Token(code[0], idx, "invalid", 1);
+  //     }
+  //     
+  //     idx += l;
+  //     code = code.slice(l);
+  //     tokens[nextTokenIdx++] = t;
+  //   }
+  // 
+  //   return tokens;
+  // }
 
-
-  function tokenize (code) {
-    var tokens = [];
-
-    var match = null;
-    var idx = 0;
-    var t = null;
-    var nextTokenIdx = 0;
-    var l = 0;
+  function tokenize(code) {
+    //function Token(a,b,c,d) { this.toString = function () { return [a,b,c,d].join(":"); } };
     
-    var multiline_string_regexp = new XRegExp('^"([^\\\\"]|\\\\.)*"', 'gs');
-    var comments_regexp = new RegExp('^;.*$', 'gm');
+    var tokens = [];
+    var tn = 0;
+    
+    var dispatch = false;
+    
+    // i tracks the start of the current window
+    // extent is the window for slicing
+    
+    for (var i = 0, 
+             extent = i, 
+             j = code.length; 
+             i < j && extent <= j;) {          
+                
+      var c = code[i];
+      
+      // we care about capturing the whole token when dispatch is used, so back up the
+      // starting index by 1
+      if (dispatch) i--; 
+      
+      switch (c) {
+        // dispatch alters the value of the next thing read
+        case "#":
+          dispatch = true;
+          i++;
+          extent++;
+          continue;
+          
+        case " ":    // ignore whitespace
+        case "\t":
+        case "\n":
+        case "\r": 
+          extent++
+          break; 
+          
+        // simple terms
+        case "^":
+        case "`":
+        case ")":
+        case "[":
+        case "]":
+        case "}":
+        case "@":
+          tokens[tn++] = new Token(c, i, c, ++extent - i);
+          break;
+        
+        case "'":
+          tokens[tn++] = new Token(code.slice(i, ++extent), i, dispatch ? "#'" : "'", extent - i);
+          break
+        
+        case "(":
+          tokens[tn++] = new Token(code.slice(i, ++extent), i, "(", extent - i);
+          break;          
+          
+        case "{":
+          tokens[tn++] = new Token(code.slice(i, ++extent), i, dispatch ? "#{" : "{", extent - i);
+          break;  
+        
+        // complicated terms
+        case "\"": // strings and regexps
+          for (extent++; extent <= j; extent++) {
+            if (code[extent] == "\\") extent++;
+            else if (code[extent] == "\"") break;
+          }
+          tokens[tn++] = new Token(code.slice(i, ++extent), i, dispatch ? "regexp" : "string", extent - i);       
+          break;
+        
+        case "+": // numbers; fall through to symbol for + and - not prefixing a number
+        case "-":
+        case "0":
+        case "1":
+        case "2":
+        case "3":
+        case "4":
+        case "5":
+        case "6":
+        case "7":
+        case "8":
+        case "9":
+          var c2 = code[i + 1];
+          if (((c == "+" || c == "-") && c2.match(/[0-9]/)) // prefixes
+              || (c != "+" && c != "-")) {
+            if (c == "+" || c == "-") extent++; 
+            for (; extent <= j; extent++) {
+              switch (code[extent]) {
+                case "0":
+                case "1":
+                case "2":
+                case "3":
+                case "4":
+                case "5":
+                case "6":
+                case "7":
+                case "8":
+                case "9":
+                  continue;
+              }
+              
+              break;
+            }
+              
+            c = code[extent];
+            c2 = code[extent + 1];
+            if ((c == "r" || c == "R" || c == "/" || c == ".") 
+                && c2.match(/[0-9]/)) {
+              for (extent++; extent <= j; extent++) {
+                switch (code[extent]) {
+                  case "0":
+                  case "1":
+                  case "2":
+                  case "3":
+                  case "4":
+                  case "5":
+                  case "6":
+                  case "7":
+                  case "8":
+                  case "9":
+                    continue;
+                }
 
-    while (code.length) {
-      match = null;
+                break;
+              }
+            }
+            
+            c = code[extent];
+            if (c == "N" || c == "M") extent++;
 
-      if (match = code.match(/^\\(newline|space|tab|.)/)) { // characters
-        l = match[0].length;
-        t = new Token(match[0], idx, "value", l);
-      }
-      else if (match = code.match(/^[+-]?\d+([r.\/]\d+|M)?/)) { // numbers
-        l = match[0].length;
-        t = new Token(match[0], idx, "value", l);        
-      } 
-      else if (match = code.match(/^#"(?:\.|(\\\")|[^\""\n])*"/g)) { // regexps
-        l = match[0].length;
-        t = new Token(match[0], idx, "string", l);                
-      }
-      else if (match = code.match(multiline_string_regexp)) { // strings
-        l = match[0].length;
-        t = new Token(match[0], idx, "string", l);                
-      }
-      else if (match = code.match(/^:?[-_a-z*?!.><|&%][-_a-z*?!.><|&%0-9\/]*/i)) {// sym and key
-        l = match[0].length;
-        t = new Token(match[0], idx, match[0][0] === ":" ? "keyword" : "symbol", l);
-      }
-      else if (match = one_of(code, ["#(", "(", ")", 
-                                     "#{", "{", "}", 
-                                     "[", "]", "^", 
-                                     "@"])) {
-        l = match.length;
-        t = new Token(match, idx, match, l);                                
-      }
-      else if (match = code.match(/^[\s,]+/)) { // whitespace
-        l = match[0].length;
-        t = new Token(match[0], idx, "whitespace", l);
-      }
-      else if (match = code.match(comments_regexp)) { // comments
-        l = match[0].length;
-        t = new Token(match[0], idx, "comments", l);        
-      }
-      else {
-        l = 1;
-        t = new Token(code[0], idx, "invalid", 1);
+            tokens[tn++] = new Token(code.slice(i, extent), i, "value", extent++ - i);
+            break;
+          }
+
+        case "_":
+          if (dispatch && c == "_") {
+            tokens[tn++] = new Token(code.slice(i, ++extent), i, "skip", extent - i);
+            break;
+          } // if not a skip, fall through to symbols
+        
+        default: 
+          extent++;
       }
       
-      idx += l;
-      code = code.slice(l);
-      tokens[nextTokenIdx++] = t;
-    }
-
+      dispatch = false;
+      i = extent;
+    } 
+    
     return tokens;
   }
+
 
 
   function new_scope(parent, opening_token, scope_type) {
@@ -325,8 +476,6 @@ var ClojureBrush = (function (SH) {
     var meta = exp.meta;
     meta.meta_token.css = "preprocessor";
     
-    console.log(meta.meta_token.value, meta.attached_node)
-    
     _annotate_metadata_recursive(meta.attached_node);
   }
 
@@ -427,49 +576,36 @@ var ClojureBrush = (function (SH) {
     }
   }
 
-  function flatten_to_buffer(exp, buffer) {
-    if (exp.list) {
-      if (exp.opening) buffer.push(exp.opening);
-      for (var i = 0; i < exp.list.length; i++) {
-        flatten_to_buffer(exp.list[i], buffer);
-      }
-      if (exp.closing) buffer.push(exp.closing);
-    }
-    else {
-      buffer.push(exp);
-    }
-  }
   
   // create the new brush
 
-  SH.brushes.Clojure = function () {
-
-    this.findMatches = function find_matches (regexpList, code) {
-      console.profile();
-      var tokens = tokenize(code);
-      
-      // seperate out interesting and uninteresting tokens; we want to highlight
-      // comments and whitespace correctly but it just gets in the way of sexp processing
-      var interesting = filter(tokens, function (token) { 
-        return !(token.tag === "whitespace"
-                 || token.tag === "comments"
-                 || token.tag === "invalid");
-      });
-
-      var sexps = build_sexps(interesting);
-      annotate_expressions(sexps)
-      console.profileEnd();
-      return map(tokens, function (token) {
-        if (!token.css) {
-          return extend(object(token), {css: token.tag});
-        }
-        return token;
-      });
-    };
-  
-  }
-
+  SH.brushes.Clojure = function () {};
   SH.brushes.Clojure.prototype = new SyntaxHighlighter.Highlighter();
+  
+  SH.brushes.Clojure.prototype.findMatches = function find_matches (regexpList, code) {
+    console.profile();
+    var tokens = tokenize(code);
+    
+    // seperate out interesting and uninteresting tokens; we want to highlight
+    // comments and whitespace correctly but it just gets in the way of sexp processing
+    var interesting = filter(tokens, function (token) { 
+      return !(token.tag === "whitespace"
+               || token.tag === "comments"
+               || token.tag === "invalid");
+    });
+
+    var sexps = build_sexps(interesting);
+    annotate_expressions(sexps)
+    console.profileEnd();
+    
+    return map(tokens, function (token) {
+      if (!token.css) {
+        return extend(object(token), {css: token.tag});
+      }
+      return token;
+    });
+  };
+  
   SH.brushes.Clojure.aliases   = ['clojure', 'Clojure', 'clj'];
 
   return {};
