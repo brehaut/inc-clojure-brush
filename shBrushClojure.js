@@ -440,14 +440,19 @@ net.brehaut.ClojureTools = (function (SH) {
 
   function _annotate_metadata_recursive(meta, scope) {
      annotate_expressions(meta, scope);
-    
-    if (meta && meta.list) {
+    if (!meta) return;
+
+    if (meta.list !== undefined && meta.list !== null) {
       for (var i = 0, j = meta.list.length; i < j; i++) {
         meta.opening.is_meta = true
         meta.closing.is_meta = true
         _annotate_metadata_recursive(meta.list[i], scope);
       }
-    }    
+    }
+    else if (meta.attached_node) {
+      meta.token.is_meta = true;
+      _annotate_metadata_recursive(meta.attached_node, scope);
+    }
     else {
       if (meta.value.match(/([A-Z].*\/)?[A-Z_]+/)) {
         meta.tag = "type";
@@ -462,6 +467,7 @@ net.brehaut.ClojureTools = (function (SH) {
     
     _annotate_metadata_recursive(meta, {});
   }
+
 
   function annotate_expressions(exp, scope) {
     annotate_metadata(exp);
@@ -520,6 +526,9 @@ net.brehaut.ClojureTools = (function (SH) {
           exp.tag = "variable";
         }
         break;
+      
+      default:
+        if (exp.attached_node) annotate_expressions(exp.attached_node, scope);
     }
   }
 
@@ -553,7 +562,7 @@ net.brehaut.ClojureTools = (function (SH) {
   function translate_tags_to_css(tokens) {
     for (var i = 0, j = tokens.length; i < j; i++) {
       var token = tokens[i];
-      if (!css_translation[token.tag]) console.log(token.tag)
+//      if (!css_translation[token.tag]) console.log(token.tag)
       token.css = css_translation[token.tag];
       if (token.is_meta) token.css += " meta";
     };
