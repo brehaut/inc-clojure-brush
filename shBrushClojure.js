@@ -11,11 +11,11 @@ if (!(net.brehaut)) net.brehaut = {};
 net.brehaut.ClojureTools = (function (SH) {
   "use strict";
   // utiliies
-  function object(o) {
+  if (!Object.create) Object.create = function object(o) {
     function F() {};
     F.prototype = o;  
     return new F();
-  }
+  };
         
   // data
   
@@ -24,6 +24,7 @@ net.brehaut.ClojureTools = (function (SH) {
     this.index = index;
     this.length = length || value.length;
     this.tag = tag;
+    this.is_meta = false;
   }
   
   // null_token exists so that LispNodes that have not had a closing tag attached
@@ -33,21 +34,17 @@ net.brehaut.ClojureTools = (function (SH) {
   /* LispNodes are aggregate nodes for sexpressions. 
    *
    */
-  function LispNode(tag, children, opening, closing) {
+  function LispNode(tag, children, opening) {
     this.tag = tag;            // current metadata for syntax inference
     this.parent = null;        // the parent expression
     this.list = children;      // all the child forms in order
     this.opening = opening;    // the token that opens this form.
     this.closing = null_token; // the token that closes this form.
     this.meta = null;          // metadata nodes will be attached here if they are found
-    this.scope = {};           // any binding forms may insert names into here for locals lookup
+  }
 
-  }
-  LispNode.prototype = { 
-    toString: function () {
-      return this.opening.value + this.list.join(",") + (this.closing ? this.closing.value : ""); 
-    }
-  }
+  var null_lispnode = new LispNode("null", [], null_token);
+
   
   function PrefixNode(tag, token, attached_node) {
     this.tag = tag;
@@ -272,14 +269,16 @@ net.brehaut.ClojureTools = (function (SH) {
     
     function parse_one(t) {
       // ignore special tokens and forms that dont belong in the tree
-      for (; (t.tag === "comments" || t.tag === "invalid" || t.tag == "skip") && i < j; ) {
+      for (; t && (t.tag === "comments" || t.tag === "invalid" || t.tag == "skip") && i < j; ) {
         if (t.tag === "skip") {
           t.tag = "preprocessor";
           annotate_comment(parse_one(tokens[++i]));
         }
         t = tokens[++i];
       }
-
+      
+      if (!t) return {}; // hackity hack
+      
       switch (t.tag) {
         case "{":
           return build_aggregate(new LispNode("map", [], t), "}");
@@ -377,7 +376,7 @@ net.brehaut.ClojureTools = (function (SH) {
       else if (exp.tag === "map") {
         for (var i = 0; i < exp.list.length; i += 2) {
           annotate_destructuring(exp.list[i], scope);
-          annotate_expressions(exp.list[i + 1]);
+          annotate_expressions(exp.list[i + 1], scope);
         } 
       }
     } 
@@ -387,7 +386,7 @@ net.brehaut.ClojureTools = (function (SH) {
     }
   }
 
-  function annotate_arguments (exp) {
+  function annotate_arguments (exp, scope) {
   }
 
   function _annotate_binding_vector (exp, scope, special_cases) {
@@ -400,32 +399,30 @@ net.brehaut.ClojureTools = (function (SH) {
     if (special_cases) {
       for (var i = 0; i < bindings.length; i += 2) {
         annotate_destructuring(bindings[i], scope);
-        annotate_expressions(bindings[i + 1]);
+        annotate_expressions(bindings[i + 1], scope);
         special_cases(bindings[i], bindings[i + 1]);
       }
     } 
     else {
       for (var i = 0; i < bindings.length; i += 2) {
         annotate_destructuring(bindings[i], scope);
-        annotate_expressions(bindings[i + 1]);
+        annotate_expressions(bindings[i + 1], scope);
       }
     }
     
   }
 
-  function annotate_binding (exp) {
+  function annotate_binding (exp, scope) {
     var bindings = exp.list[1];
 
     if (bindings) {
-      _annotate_binding_vector(bindings, exp.scope);
+      scope = Object.create(scope);
+      _annotate_binding_vector(bindings, scope);
     }
     for (var i = 2; i < exp.list.length; i++) {
-      annotate_expressions(exp.list[i]);
+      annotate_expressions(exp.list[i], scope);
     }
   }
-  
-
-
   
 
   register_annotation_rule(
@@ -434,35 +431,28 @@ net.brehaut.ClojureTools = (function (SH) {
   );
   
   register_annotation_rule(
-    ["let", "binding", "doseq", "for"],
+    ["let", "when-let", "if-let", "binding", "doseq", "for"],
     annotate_binding
   );
   
-  function is_local(exp, name) {
-    if (exp.scope && exp.scope[name]) return true;
-    if (exp.parent) return is_local(exp.parent, name);
-    return false;
-  }
 
   // standard annotations
 
-  function _annotate_metadata_recursive(meta) {
-     annotate_expressions(meta);
+  function _annotate_metadata_recursive(meta, scope) {
+     annotate_expressions(meta, scope);
     
     if (meta && meta.list) {
       for (var i = 0, j = meta.list.length; i < j; i++) {
-        meta.opening.css = "meta"
-        if (meta.closing) meta.closing.css = "meta";
-        _annotate_metadata_recursive(meta.list[i]);
+        meta.opening.is_meta = true
+        meta.closing.is_meta = true
+        _annotate_metadata_recursive(meta.list[i], scope);
       }
     }    
     else {
       if (meta.value.match(/([A-Z].*\/)?[A-Z_]+/)) {
-        meta.css = "color1 meta";
+        meta.tag = "type";
       }
-      else {
-        meta.css = (meta.css || meta.tag) + " meta";
-      }   
+      meta.is_meta = true;
     }
   }
   
@@ -470,16 +460,16 @@ net.brehaut.ClojureTools = (function (SH) {
     if (!(exp && exp.meta)) return;
     var meta = exp.meta;
     
-    _annotate_metadata_recursive(meta);
+    _annotate_metadata_recursive(meta, {});
   }
 
-  function annotate_expressions(exp) {
+  function annotate_expressions(exp, scope) {
     annotate_metadata(exp);
     
     switch (exp.tag) {
       case "toplevel": 
         for (var i = 0; i < exp.list.length; i++) {
-          annotate_expressions(exp.list[i]);
+          annotate_expressions(exp.list[i], scope);
         }
         break;
       
@@ -489,21 +479,21 @@ net.brehaut.ClojureTools = (function (SH) {
         if (head) {
           if (head.tag === "list" || head.tag === "vector" 
            || head.tag === "map" || head.tag === "set") {
-            annotate_expressions(head);
+            annotate_expressions(head, scope);
           }
           else {
             head.tag = (head.value.match(/(^\.)|(\.$)|[A-Z].*\//)
                         ? "method"
-                        : "functions");
+                        : "function");
           }
 
           // apply specific rules
           if (annotation_rules.hasOwnProperty(head.value)) {
-            annotation_rules[head.value](exp);
+            annotation_rules[head.value](exp, scope);
           } 
           else {
             for (var i = 1; i < exp.list.length; i++) {
-              annotate_expressions(exp.list[i]);
+              annotate_expressions(exp.list[i], scope);
             }
           } 
         }
@@ -517,28 +507,58 @@ net.brehaut.ClojureTools = (function (SH) {
       case "vector": // data
       case "map":
       case "set":
-        exp.opening.tag = "value";
-        exp.closing.tag = "value";
         for (var i = 0; i < exp.list.length; i++) {
-          annotate_expressions(exp.list[i]);
+          annotate_expressions(exp.list[i], scope);
         }
         break;
       
       case "symbol":
         if (exp.value.match(/[A-Z].*\/[A-Z_]+/)) {
-          exp.tag = "constants";
+          exp.tag = "constant";
         }
-        else if (is_local(exp, exp.value)) {
+        else if (scope[exp.value]) {
           exp.tag = "variable";
         }
-        break;
-    
-      case "keyword":
-        exp.tag = "constants";
         break;
     }
   }
 
+  // translation of tag to css:
+  var css_translation = {
+    "constant":     "constants",
+    "keyword":      "constants",
+    "method":       "color1",
+    "type":         "color3", 
+    "function":     "functions",
+    "string":       "string",
+    "regexp":       "string",
+    "value":        "value",
+    "comments":     "comments",
+    "symbol":       "symbol",
+    "variable":     "variable",
+    "preprocessor": "preprocessor",
+    "meta":         "preprocessor", 
+    "'":            "preprocessor", 
+    "#'":            "preprocessor",    
+    "(":            "plain",
+    ")":            "plain",
+    "{":            "keyword",
+    "}":            "keyword",
+    "#{":           "keyword",   
+    "[":            "keyword",
+    "]":            "keyword",
+    "invalid":      "invalid" 
+  }
+  
+  function translate_tags_to_css(tokens) {
+    for (var i = 0, j = tokens.length; i < j; i++) {
+      var token = tokens[i];
+      if (!css_translation[token.tag]) console.log(token.tag)
+      token.css = css_translation[token.tag];
+      if (token.is_meta) token.css += " meta";
+    };
+  }
+  
   
   // create the new brush
 
@@ -549,14 +569,9 @@ net.brehaut.ClojureTools = (function (SH) {
     console.profile();
     var tokens = tokenize(code);
     
-    annotate_expressions(build_tree(tokens));
+    annotate_expressions(build_tree(tokens), {});
     
-    for (var i = 0, j = tokens.length; i < j; i++) {
-      var token = tokens[i];
-      if (!token.css) {
-        token.css = token.tag;
-      }
-    };
+    translate_tags_to_css(tokens);
     
     console.profileEnd();
     
