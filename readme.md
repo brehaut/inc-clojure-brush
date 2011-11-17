@@ -14,6 +14,16 @@ No error handling exists yet. Bugs abound.
 
 The code is pretty hairy in a lot of places.
 
+## Todo 
+ 
+ * Meta, Quotes, Quasiquotes, Splice, Skip all need to attach correctly to the following form.
+ * Tokenizer for Constructor literals.
+ * All the destructuring rules need to be supported for scopes.
+ * Function annotators (for arguments).
+ * Expose registering custom form annotation rules.
+ * Support configuration for coloring locals.
+ * Exponents in number literals, hex literals 
+
 ## Improvements over sh-clojure
 
  * `(comment …)` forms are correctly highlighted.
@@ -29,7 +39,7 @@ The code is pretty hairy in a lot of places.
  * Characters (including \newline, \tab, and \space) handled correctly.
  * Supports radix's, and ratios in number literals.
 
-### Thanks
+## Thanks
 
 The following people supplied feedback, opinion, and critique during the development of this lib.
 
@@ -38,3 +48,9 @@ The following people supplied feedback, opinion, and critique during the develop
  * Chas Emerick
  * Oliver Hunt 
  * Steven Ashley
+ 
+## License
+
+Copyright (C) 2011 Andrew Brehaut
+
+Distributed under the Eclipse Public License, the same as Clojure.

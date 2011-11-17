@@ -1,83 +1,58 @@
-// This clojure brush 
+// (inc closjure-brush) ;; an improved SyntaxHighlighter brush for clojure
 //
+// https://github.com/brehaut/inc-clojure-brush
 //
+// Written by Andrew Brehaut
+// V0.1, November 2011
 
+if (typeof net == "undefined") net = {};
+if (!(net.brehaut)) net.brehaut = {};
 
-var ClojureBrush = (function (SH) {
+net.brehaut.ClojureTools = (function (SH) {
   "use strict";
   // utiliies
-  
-
-  function extend(o, extension) {
-    for (var k in extension) if (extension.hasOwnProperty(k)) {
-      o[k] = extension[k];
-    }
-    return o;
-  }
-
   function object(o) {
     function F() {};
     F.prototype = o;  
     return new F();
   }
-  
-  function map(l, f) {
-    var nl = [];
-    for (var i = 0, j = l.length; i < j; i++) {
-      nl[i] = f(l[i]);
-    }
-    return nl;
-  }
-  
-  function filter(l, f) {
-    var nl = [];
-    for (var i = 0, j = l.length; i < j; i++) {
-      if (f(l[i])) nl[nl.length] = l[i];
-    }
-    return nl;
-  }
-  
-  function mapcat(l, f) {
-    return Array.prototype.concat.apply([], map(l, f));
-  }
-  
+        
   // data
   
   function Token(value, index, tag, length) {
-     if (!(this instanceof Token)) 
-        return new Token(value, index, tag, length);
     this.value = value;
     this.index = index;
     this.length = length || value.length;
     this.tag = tag;
   }
+  Token.prototype = {
+    toString: function () { return this.value; }
+  }
   
   /* LispNodes are aggregate nodes for sexpressions. 
    *
    */
-  function LispNode(tag, parent, children, opening, closing) {
-    if (!(this instanceof LispNode)) 
-      return new LispNode(tag, parent, children, opening, closing);
-      
+  function LispNode(tag, children, opening, closing) {
     this.tag = tag;         // current metadata for syntax inference
-    this.parent = parent;   // the parent expression
+    this.parent = null;     // the parent expression
     this.list = children;   // all the child forms in order
     this.opening = opening; // the token that opens this form.
     this.closing = closing; // the token that closes this form.
     this.meta = null;       // metadata nodes will be attached here if they are found
     this.scope = {};        // any binding forms may insert names into here for locals lookup
-    
-    this.depth = parent ? (parent.depth + 1) : 0;
-  };
 
+  }
+  LispNode.prototype = { 
+    toString: function () {
+      return this.opening.value + this.list.join(",") + (this.closing ? this.closing.value : ""); 
+    }
+  }
   
-  function MetaNode(meta_token, parent) {
-    if (!(this instanceof MetaNode)) 
-      return new MetaNode(meta_token, parent);
-    
-    this.meta_token = meta_token;
-    this.attached_node = null;
-    this.parent = parent;
+  function PrefixNode(tag, token, attached_node) {
+    this.tag = tag;
+    this.token = token;
+    this.attached_node = attached_node;
+    this.parent = null;
   }
 
   
@@ -180,7 +155,6 @@ var ClojureBrush = (function (SH) {
         
         case "+": // numbers; fall through to symbol for + and - not prefixing a number
         case "-":
-          extent++; // step on one so that we can test numbers correctly
         case "0":
         case "1":
         case "2":
@@ -191,9 +165,12 @@ var ClojureBrush = (function (SH) {
         case "7":
         case "8":
         case "9":
+        // todo: exponents, hex
+        // http://my.safaribooksonline.com/9781449310387/14?reader=pf&readerfullscreen=&readerleftmenu=1
           var c2 = code[i + 1];
           if (((c === "+" || c === "-") && c2.match(/[0-9]/)) // prefixes
               || (c !== "+" && c !== "-")) {
+            if (c === "+" || c === "-") extent++; 
             for (; extent <= j; extent++) {
               var charCode = code.charCodeAt(extent);
               if (charCode < zero || charCode > nine) break;
@@ -273,34 +250,32 @@ var ClojureBrush = (function (SH) {
       dispatch = false;
       i = extent;
     } 
-    
+
     return tokens;
   }
 
 
 
-  function new_scope(parent, opening_token, scope_type) {
-    var scope = new LispNode(scope_type, parent, [], opening_token, null);
-  
-    if (parent) parent.list[parent.list.length] = scope;
+  function new_scope(opening_token, scope_type) {
+    var scope = new LispNode(scope_type, [], opening_token, null);
   
     return scope;  
   }
 
-  function list_exp(parent, opening_token) {
-    return new_scope(parent, opening_token, "list");
+  function list_exp(opening_token) {
+    return new_scope(opening_token, "list");
   }
 
-  function vector_exp(parent, opening_token) {
-    return new_scope(parent, opening_token, "vector");
+  function vector_exp(opening_token) {
+    return new_scope(opening_token, "vector");
   }
 
-  function map_exp(parent, opening_token) {
-    return new_scope(parent, opening_token, "map");
+  function map_exp(opening_token) {
+    return new_scope(opening_token, "map");
   }
 
-  function set_exp(parent, opening_token) {
-    return new_scope(parent, opening_token, "set");
+  function set_exp(opening_token) {
+    return new_scope(opening_token, "set");
   }
 
   function build_sexps(tokens) {
@@ -312,72 +287,55 @@ var ClojureBrush = (function (SH) {
       closing: null,
       depth: -1
     };
-    var current = toplevel;
-
-    var pending_meta = null;
-    var collect_next = false;
     
-    for (var i = 0, j = tokens.length; i < j; i++) {
-      var t = tokens[i];
-
+    // loop variables hoisted out as semi globals to track position in token stream
+    var i = -1;
+    var j = tokens.length;
+    
+    function parse_one(t) {      
       switch (t.tag) {
-        case "^":
-        case "#^":
-          pending_meta = new MetaNode(t, current);
-          collect_next = true;
-          continue;
-          
+        case "{":
+          return build_aggregate(map_exp(t));
         case "(":
-        case "#(":   
-          current = list_exp(current, t);
-          break;
-        
-        case "[": 
-          current = vector_exp(current, t);
-          break;
-        
-        case "{": 
-          current = map_exp(current, t);
-          break;
-        
-        case "#{": 
-          current = set_exp(current, t);
-          break;  
-        
-        case ")":
-        case "]":
-        case "}":              
-          current.closing = t;
-          // dont let the top level from pop off just because someone put too many closing 
-          // parens in their forms
-          if (current.parent) current = current.parent; 
-          break;
-        
+          return build_aggregate(list_exp(t));
+        case "#{":
+          return build_aggregate(set_exp(t));
+        case "[":
+          return build_aggregate(vector_exp(t));
+        case "'":
+          return new PrefixNode("quote", t, parse_one(tokens[++i]));
+        case "#'":
+          return new PrefixNode("varquote", t, parse_one(tokens[++i]));  
+        case "@":
+          return new PrefixNode("deref", t, parse_one(tokens[++i]));  
+        case "`":
+          return new PrefixNode("quasiquote", t, parse_one(tokens[++i]));  
+        case "^":
+          var meta = parse_one(tokens[++i]);
+          var next = parse_one(tokens[++i]);
+          next.meta = meta;
+          return next;
         default:
-          t.parent = current;
-          current.list.push(t);
-      }
-      
-      if (collect_next) {
-        switch (t.tag) {
-          case "(":
-          case "#(":   
-          case "{":
-          case "#{":
-            pending_meta.attached_node = current;
-            current.parent.list.splice(current.parent.list.length - 1, 1); // hack
-            break;
-          default:
-            pending_meta.attached_node = t;
-        }
-
-        collect_next = null;
-      }
-      else if (pending_meta){
-        current.meta = pending_meta;
-        pending_meta = null;
+          return t;
       }
     }
+    
+    // build_aggregate collects to ether sub forms for one aggregate for. 
+    function build_aggregate(current) {
+      for (i++; i < j; i++) {
+        var t = tokens[i];
+
+        if (t.tag === "}" || t.tag === ")" || t.tag === "]") {
+          current.closing = t;
+          return current;
+        }
+        var node = parse_one(t);
+        node.parent = current;
+        current.list[current.list.length] = node;
+      }
+    }
+    
+    build_aggregate(toplevel, j); // j as max is the absolute upper bound; ie collect everything
     return toplevel;
   }
 
@@ -404,22 +362,29 @@ var ClojureBrush = (function (SH) {
   }
 
   function annotate_arguments (exp) {
-    return exp; 
   }
 
   function _annotate_binding_vector (exp, scope, special_cases) {
     if (exp.tag != "vector") return;
-    special_cases = special_cases || function (name, exp) {};
   
     var bindings = exp.list;
 
     if (bindings.length % 2 === 1) return;
     
-    for (var i = 0; i < bindings.length; i += 2) {
-      annotate_destructuring(bindings[i], scope);
-      annotate_expressions(bindings[i + 1]);
-      special_cases(bindings[i], bindings[i + 1]);
+    if (special_cases) {
+      for (var i = 0; i < bindings.length; i += 2) {
+        annotate_destructuring(bindings[i], scope);
+        annotate_expressions(bindings[i + 1]);
+        special_cases(bindings[i], bindings[i + 1]);
+      }
+    } 
+    else {
+      for (var i = 0; i < bindings.length; i += 2) {
+        annotate_destructuring(bindings[i], scope);
+        annotate_expressions(bindings[i + 1]);
+      }
     }
+    
   }
 
   function annotate_binding (exp) {
@@ -438,6 +403,8 @@ var ClojureBrush = (function (SH) {
     
     if (meta && meta.list) {
       for (var i = 0, j = meta.list.length; i < j; i++) {
+        meta.opening.css = "meta"
+        if (meta.closing) meta.closing.css = "meta";
         _annotate_metadata_recursive(meta.list[i]);
       }
     }    
@@ -452,11 +419,10 @@ var ClojureBrush = (function (SH) {
   }
   
   function annotate_metadata(exp) {
-    if (!exp.meta) return;
+    if (!(exp && exp.meta)) return;
     var meta = exp.meta;
-    meta.meta_token.css = "preprocessor";
     
-    _annotate_metadata_recursive(meta.attached_node);
+    _annotate_metadata_recursive(meta);
   }
 
   var annotation_rules = (function () {
@@ -507,8 +473,8 @@ var ClojureBrush = (function (SH) {
         break;
       
       case "list": // functions, macros, special forms, comments
-        exp.opening.css = "rainbow" + ((exp.depth % 5) + 1);
-        if (exp.closing) exp.closing.css = exp.opening.css;
+//        exp.opening.css = "rainbow" + ((exp.depth % 5) + 1);
+//        if (exp.closing) exp.closing.css = exp.opening.css;
         var head = exp.list[0];
       
         if (head) {
@@ -536,7 +502,8 @@ var ClojureBrush = (function (SH) {
           } 
         }
         else { // empty list
-          exp.opening.css = exp.closing.css = "constants";
+          exp.opening.css = "constants";
+          if (exp.closing) exp.closing.css = "constants";
         }
       
         break;
@@ -550,7 +517,7 @@ var ClojureBrush = (function (SH) {
           annotate_expressions(exp.list[i]);
         }
         break;
-        
+      
       case "symbol":
         if (exp.value.match(/[A-Z].*\/[A-Z_]+/)) {
           exp.tag = "constants";
@@ -600,7 +567,10 @@ var ClojureBrush = (function (SH) {
     return tokens;
   };
   
-  SH.brushes.Clojure.aliases   = ['clojure', 'Clojure', 'clj'];
+  SH.brushes.Clojure.aliases = ['clojure', 'Clojure', 'clj'];
 
-  return {};
+  return {
+    tokenize: tokenize,
+    build_tree: build_sexps
+  };
 })(SyntaxHighlighter);
