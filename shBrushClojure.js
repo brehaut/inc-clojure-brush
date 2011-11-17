@@ -25,21 +25,22 @@ net.brehaut.ClojureTools = (function (SH) {
     this.length = length || value.length;
     this.tag = tag;
   }
-  Token.prototype = {
-    toString: function () { return this.value; }
-  }
+  
+  // null_token exists so that LispNodes that have not had a closing tag attached
+  // can have a dummy token to simplify annotation
+  var null_token = new Token("", -1, "null", -1);
   
   /* LispNodes are aggregate nodes for sexpressions. 
    *
    */
   function LispNode(tag, children, opening, closing) {
-    this.tag = tag;         // current metadata for syntax inference
-    this.parent = null;     // the parent expression
-    this.list = children;   // all the child forms in order
-    this.opening = opening; // the token that opens this form.
-    this.closing = closing; // the token that closes this form.
-    this.meta = null;       // metadata nodes will be attached here if they are found
-    this.scope = {};        // any binding forms may insert names into here for locals lookup
+    this.tag = tag;            // current metadata for syntax inference
+    this.parent = null;        // the parent expression
+    this.list = children;      // all the child forms in order
+    this.opening = opening;    // the token that opens this form.
+    this.closing = null_token; // the token that closes this form.
+    this.meta = null;          // metadata nodes will be attached here if they are found
+    this.scope = {};           // any binding forms may insert names into here for locals lookup
 
   }
   LispNode.prototype = { 
@@ -255,30 +256,7 @@ net.brehaut.ClojureTools = (function (SH) {
   }
 
 
-
-  function new_scope(opening_token, scope_type) {
-    var scope = new LispNode(scope_type, [], opening_token, null);
-  
-    return scope;  
-  }
-
-  function list_exp(opening_token) {
-    return new_scope(opening_token, "list");
-  }
-
-  function vector_exp(opening_token) {
-    return new_scope(opening_token, "vector");
-  }
-
-  function map_exp(opening_token) {
-    return new_scope(opening_token, "map");
-  }
-
-  function set_exp(opening_token) {
-    return new_scope(opening_token, "set");
-  }
-
-  function build_sexps(tokens) {
+  function build_tree(tokens) {
     var toplevel = {
       list: [], 
       tag: "toplevel", 
@@ -292,16 +270,25 @@ net.brehaut.ClojureTools = (function (SH) {
     var i = -1;
     var j = tokens.length;
     
-    function parse_one(t) {      
+    function parse_one(t) {
+      // ignore special tokens and forms that dont belong in the tree
+      for (; (t.tag === "comments" || t.tag === "invalid" || t.tag == "skip") && i < j; ) {
+        if (t.tag === "skip") {
+          t.tag = "preprocessor";
+          annotate_comment(parse_one(tokens[++i]));
+        }
+        t = tokens[++i];
+      }
+
       switch (t.tag) {
         case "{":
-          return build_aggregate(map_exp(t));
+          return build_aggregate(new LispNode("map", [], t), "}");
         case "(":
-          return build_aggregate(list_exp(t));
+          return build_aggregate(new LispNode("list", [], t), ")");
         case "#{":
-          return build_aggregate(set_exp(t));
+          return build_aggregate(new LispNode("set", [], t), "}");
         case "[":
-          return build_aggregate(vector_exp(t));
+          return build_aggregate(new LispNode("vector", [], t), "]");
         case "'":
           return new PrefixNode("quote", t, parse_one(tokens[++i]));
         case "#'":
@@ -311,35 +298,74 @@ net.brehaut.ClojureTools = (function (SH) {
         case "`":
           return new PrefixNode("quasiquote", t, parse_one(tokens[++i]));  
         case "^":
+          t.tag = "meta";
           var meta = parse_one(tokens[++i]);
           var next = parse_one(tokens[++i]);
           next.meta = meta;
           return next;
-        default:
-          return t;
       }
+      
+      return t;
     }
     
     // build_aggregate collects to ether sub forms for one aggregate for. 
-    function build_aggregate(current) {
+    function build_aggregate(current, expected_closing) {
       for (i++; i < j; i++) {
         var t = tokens[i];
 
         if (t.tag === "}" || t.tag === ")" || t.tag === "]") {
+          if (t.tag !== expected_closing) t.tag = "invalid";
           current.closing = t;
-          return current;
+          if (expected_closing) return current;
         }
         var node = parse_one(t);
+
         node.parent = current;
         current.list[current.list.length] = node;
       }
+      
+      return current;
     }
     
-    build_aggregate(toplevel, j); // j as max is the absolute upper bound; ie collect everything
+    build_aggregate(toplevel, null);
+    
     return toplevel;
   }
 
   // annotation rules to apply to a form based on its head
+
+  /* annotate_comment is a special case annotation. 
+   * in addition to its role in styling specific forms, it is called by parse_one to
+   * ignore any forms skipped with #_
+   */ 
+  function annotate_comment(exp) {
+    exp.tag = "comments";
+    if (exp.list) {
+      exp.opening.tag = "comments";
+      exp.closing.tag = "comments";
+    
+      for (var i = 0; i < exp.list.length; i++) {
+        var child = exp.list[i];
+        if (child.list) {
+          annotate_comment(child);
+        }
+        else {
+          child.tag = "comments";
+        }
+      }
+    }
+  }
+
+  /* custom annotation rules are stored here */
+  var annotation_rules = {}
+  
+  // this function is exposed to allow ad hoc extension of the customisation rules
+  function register_annotation_rule(names, rule) {
+    for (var i = 0; i < names.length; i+=2) {
+      annotation_rules[names[i]] = rule;
+    }
+  }
+
 
   function annotate_destructuring (exp, scope) {
     if (exp.list) {
@@ -351,7 +377,7 @@ net.brehaut.ClojureTools = (function (SH) {
       else if (exp.tag === "map") {
         for (var i = 0; i < exp.list.length; i += 2) {
           annotate_destructuring(exp.list[i], scope);
-          exp.list[i + 1].css = "plain";
+          annotate_expressions(exp.list[i + 1]);
         } 
       }
     } 
@@ -398,6 +424,28 @@ net.brehaut.ClojureTools = (function (SH) {
     }
   }
   
+
+
+  
+
+  register_annotation_rule(
+    ["comment"],
+    annotate_comment
+  );
+  
+  register_annotation_rule(
+    ["let", "binding", "doseq", "for"],
+    annotate_binding
+  );
+  
+  function is_local(exp, name) {
+    if (exp.scope && exp.scope[name]) return true;
+    if (exp.parent) return is_local(exp.parent, name);
+    return false;
+  }
+
+  // standard annotations
+
   function _annotate_metadata_recursive(meta) {
      annotate_expressions(meta);
     
@@ -425,43 +473,6 @@ net.brehaut.ClojureTools = (function (SH) {
     _annotate_metadata_recursive(meta);
   }
 
-  var annotation_rules = (function () {
-    var rules = {};
-  
-    for (var i = 0; i < arguments.length; i+=2) {
-      for (var j = 0; j < arguments[i].length; j++) {
-        rules[arguments[i][j]] = arguments[i+1];
-      }
-    }
-  
-    return rules;
-  })(
-    ["comment"],  
-    function annotate_comment(exp) {
-      exp.tag = "comments";
-      exp.opening.css = "comments";
-      exp.closing.css = "comments";
-      for (var i = 0; i < exp.list.length; i++) {
-        var child = exp.list[i];
-        if (child.list) {
-          annotate_comment(child);
-        }
-        else {
-          child.css = "comments";
-        }
-      }
-      return exp;
-    }
-    
-    ,["let", "binding", "doseq", "for", "domonad"], annotate_binding
-  );
-  
-  function is_local(exp, name) {
-    if (exp.scope && exp.scope[name]) return true;
-    if (exp.parent) return is_local(exp.parent, name);
-    return false;
-  }
-
   function annotate_expressions(exp) {
     annotate_metadata(exp);
     
@@ -473,23 +484,18 @@ net.brehaut.ClojureTools = (function (SH) {
         break;
       
       case "list": // functions, macros, special forms, comments
-//        exp.opening.css = "rainbow" + ((exp.depth % 5) + 1);
-//        if (exp.closing) exp.closing.css = exp.opening.css;
         var head = exp.list[0];
       
         if (head) {
-          if (head.tag.match(/list|vector|map/)) {
+          if (head.tag === "list" || head.tag === "vector" 
+           || head.tag === "map" || head.tag === "set") {
             annotate_expressions(head);
           }
           else {
-            if (head.value.match(/(^\.)|(\.$)|[A-Z].*\//)) {
-              head.css = "color1";
-            }
-            else {
-              head.css = "functions";
-            }
+            head.tag = (head.value.match(/(^\.)|(\.$)|[A-Z].*\//)
+                        ? "method"
+                        : "functions");
           }
-
 
           // apply specific rules
           if (annotation_rules.hasOwnProperty(head.value)) {
@@ -502,8 +508,8 @@ net.brehaut.ClojureTools = (function (SH) {
           } 
         }
         else { // empty list
-          exp.opening.css = "constants";
-          if (exp.closing) exp.closing.css = "constants";
+          exp.opening.tag = "value";
+          exp.closing.tag = "value";
         }
       
         break;
@@ -511,8 +517,8 @@ net.brehaut.ClojureTools = (function (SH) {
       case "vector": // data
       case "map":
       case "set":
-        exp.opening.css = "keyword";
-        if (exp.closing) exp.closing.css = "keyword";
+        exp.opening.tag = "value";
+        exp.closing.tag = "value";
         for (var i = 0; i < exp.list.length; i++) {
           annotate_expressions(exp.list[i]);
         }
@@ -528,7 +534,7 @@ net.brehaut.ClojureTools = (function (SH) {
         break;
     
       case "keyword":
-        exp.css = "constants";
+        exp.tag = "constants";
         break;
     }
   }
@@ -543,34 +549,25 @@ net.brehaut.ClojureTools = (function (SH) {
     console.profile();
     var tokens = tokenize(code);
     
-    // seperate out interesting and uninteresting tokens; we want to highlight
-    // comments and whitespace correctly but it just gets in the way of sexp processing
-    var interesting = [];
-    for (var i = 0, j = tokens.length; i < j; i++) {
-      var token = tokens[i];
-      if (!(token.tag === "whitespace"
-            || token.tag === "comments"
-            || token.tag === "invalid")) interesting[interesting.length] = token;
-    }
-
-    annotate_expressions(build_sexps(interesting));
+    annotate_expressions(build_tree(tokens));
     
-    console.profileEnd();
-
-    for (i = 0; i < j; i++) {
+    for (var i = 0, j = tokens.length; i < j; i++) {
       var token = tokens[i];
       if (!token.css) {
         token.css = token.tag;
       }
     };
     
+    console.profileEnd();
+    
     return tokens;
   };
   
   SH.brushes.Clojure.aliases = ['clojure', 'Clojure', 'clj'];
+  SH.brushes.Clojure.register_annotation_rule = register_annotation_rule;
 
   return {
     tokenize: tokenize,
-    build_tree: build_sexps
+    build_tree: build_tree
   };
 })(SyntaxHighlighter);

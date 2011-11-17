@@ -16,7 +16,6 @@ The code is pretty hairy in a lot of places.
 
 ## Todo 
  
- * Meta, Quotes, Quasiquotes, Splice, Skip all need to attach correctly to the following form.
  * Tokenizer for Constructor literals.
  * All the destructuring rules need to be supported for scopes.
  * Function annotators (for arguments).
@@ -26,16 +25,18 @@ The code is pretty hairy in a lot of places.
 
 ## Improvements over sh-clojure
 
- * `(comment …)` forms are correctly highlighted.
- * Doesn't need to use a list of `clojure.core` symbols; can infer meaning from position in a form.
- * Differentiates between #{functions, macros}, #{methods and constructors}.
- * Knows about name binding forms such as let, binding, for, etc
-    * Tracks locals and highlights them separately
- * Rainbow Parens (with appropriate CSS).
- * Faster than `sh-clojure` (roughly 3 times faster based on rough and ready profiling in Safari 
-   and Chrome) despite doing more.
- * Handles metadata
-    * Styling is supported with appropriate CSS. 
+ * Full tokenizer and parser allow for structure aware highlighting:
+    * `comment …` forms are correctly highlighted.
+    * Doesn't need to use a list of `clojure.core` symbols; can infer meaning from position in a    
+      form.
+    * Differentiates between #{functions, macros}, #{methods and constructors}.
+    * Knows about name binding forms such as let, binding, for, etc
+       * Tracks locals and highlights them separately
+    * Handles metadata
+       * Styling is supported with appropriate CSS.    
+    * Detects malformed code
+       * Limited to incorrectly closed aggregate expressions currently
+ * Performance is equal to or faster than `sh-clojure` despite doing more.
  * Characters (including \newline, \tab, and \space) handled correctly.
  * Supports radix's, and ratios in number literals.
 
@@ -43,11 +44,12 @@ The code is pretty hairy in a lot of places.
 
 The following people supplied feedback, opinion, and critique during the development of this lib.
 
- * [Daniel Solano Gómez](http://www.deepbluelambda.org/) for his original Clojure Brush.
  * Alan Malloy
  * Chas Emerick
  * Oliver Hunt 
  * Steven Ashley
+
+ * [Daniel Solano Gómez](http://www.deepbluelambda.org/) for his original Clojure Brush.
  
 ## License
 
