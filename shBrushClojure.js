@@ -439,7 +439,6 @@ net.brehaut.ClojureTools = (function (SH) {
   // standard annotations
 
   function _annotate_metadata_recursive(meta, scope) {
-     annotate_expressions(meta, scope);
     if (!meta) return;
 
     if (meta.list !== undefined && meta.list !== null) {
@@ -454,7 +453,7 @@ net.brehaut.ClojureTools = (function (SH) {
       _annotate_metadata_recursive(meta.attached_node, scope);
     }
     else {
-      if (meta.value.match(/([A-Z].*\/)?[A-Z_]+/)) {
+      if (meta.tag === "symbol" && meta.value.match(/([A-Z].*\/)?[A-Z_]+/)) {
         meta.tag = "type";
       }
       meta.is_meta = true;
@@ -465,6 +464,7 @@ net.brehaut.ClojureTools = (function (SH) {
     if (!(exp && exp.meta)) return;
     var meta = exp.meta;
     
+     annotate_expressions(meta, {});    
     _annotate_metadata_recursive(meta, {});
   }
 
