@@ -2,26 +2,13 @@
 
 ## ;; Work In Progress
 
-This project aims to product a smarter clojure brush for [Syntax Highlighter](https://github.com/alexgorbatchev/SyntaxHighlighter) that goes further than existing efforts such as [sh-clojure](https://github.com/sattvik/sh-clojure). This brush attempts to be moderately aware of sexp forms in clojure and provide sensible highlighting rules for core forms, and hopefully guess sensibly for additional forms. 
+This project aims to product a smarter clojure brush for [Syntax Highlighter](https://github.com/alexgorbatchev/SyntaxHighlighter) that goes further than existing efforts such as [sh-clojure](https://github.com/sattvik/sh-clojure). This brush attempts to be moderately aware of S-Expression forms in clojure and provide sensible highlighting rules for core forms, and hopefully guess sensibly for additional forms. 
 
-In addition to correctness, this brush attempts to be tolerant of squiffy code, and run as fast as it can. The brush has a hand written tokenizer that drastically outperforms the initial regexp based solution (down from 80% of total runtime in chrome and safari to between 0 and 10%).
+In addition to correctness, this brush attempts to be tolerant of squiffy code, and run as fast as it can. The brush has a hand written tokenizer that drastically outperforms the initial regexen based solution.
 
 <img src="http://media.brehaut.net/files/tmp/clojure-brush.png">
 
-**Not Ready For Real Use!** 
 
-No error handling exists yet. Bugs abound.
-
-The code is pretty hairy in a lot of places.
-
-## Todo 
- 
- * Tokenizer for Constructor literals.
- * All the destructuring rules need to be supported for scopes.
- * Function annotators (for arguments).
- * Expose registering custom form annotation rules.
- * Support configuration for coloring locals.
- * Exponents in number literals, hex literals 
 
 ## Improvements over sh-clojure
 
@@ -36,9 +23,20 @@ The code is pretty hairy in a lot of places.
        * Styling is supported with appropriate CSS.    
     * Detects malformed code
        * Limited to incorrectly closed aggregate expressions currently
- * Performance is equal to or faster than `sh-clojure` despite doing more.
+ * Performance is equal to or faster than `sh-clojure` despite doing more. For larger files it appears that the overhead of analyzing the code is surpassed by creation of HTML elements which exists outside the control of the brush.
  * Characters (including \newline, \tab, and \space) handled correctly.
  * Supports radix's, and ratios in number literals.
+
+## Todo 
+ 
+ * Internet Explorer testing.
+ * All the destructuring rules need to be supported for scopes.
+ * Function annotators (for arguments). 
+ * Tokenizer for Constructor literals.
+ * Improved error handling
+ * Expose registering custom form annotation rules.
+ * Support configuration for coloring locals.
+ * Exponents in number literals, hex literals
 
 ## Thanks
 

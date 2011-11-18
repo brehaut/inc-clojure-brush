@@ -3,7 +3,7 @@
 // https://github.com/brehaut/inc-clojure-brush
 //
 // Written by Andrew Brehaut
-// V0.1, November 2011
+// V0.9, November 2011
 
 if (typeof net == "undefined") net = {};
 if (!(net.brehaut)) net.brehaut = {};
@@ -137,6 +137,17 @@ net.brehaut.ClojureTools = (function (SH) {
           }
           break;
         
+        case "~": // slice
+          if (code[i + 1] === "@") {
+            extent += 2;
+            tokens[tn++] = new Token(code.slice(i, extent), i, "splice", 2);
+          }
+          else {
+            tokens[tn++] = new Token(code.slice(i, ++extent), i, "splice", 2);
+          }
+          console.log(tokens[tn - 1])
+          break;
+        
         // complicated terms
         case "\"": // strings and regexps
           for (extent++; extent <= j; extent++) {
@@ -214,7 +225,6 @@ net.brehaut.ClojureTools = (function (SH) {
               case ")":
               case "[":
               case "]":
-              case "#":
               case "^":
               case "`":
               case "@":   
@@ -353,6 +363,10 @@ net.brehaut.ClojureTools = (function (SH) {
         }
       }
     }
+    else if (exp.attached_node) {
+      annotate_comment(exp.attached_node);
+      exp.token.tag = "comments";
+    }
   }
 
   /* custom annotation rules are stored here */
@@ -360,7 +374,7 @@ net.brehaut.ClojureTools = (function (SH) {
   
   // this function is exposed to allow ad hoc extension of the customisation rules
   function register_annotation_rule(names, rule) {
-    for (var i = 0; i < names.length; i+=2) {
+    for (var i = 0; i < names.length; i++) {
       annotation_rules[names[i]] = rule;
     }
   }
@@ -545,10 +559,11 @@ net.brehaut.ClojureTools = (function (SH) {
     "comments":     "comments",
     "symbol":       "symbol",
     "variable":     "variable",
+    "splice":       "preprocessor", 
     "preprocessor": "preprocessor",
     "meta":         "preprocessor", 
     "'":            "preprocessor", 
-    "#'":            "preprocessor",    
+    "#'":           "preprocessor",    
     "(":            "plain",
     ")":            "plain",
     "{":            "keyword",
