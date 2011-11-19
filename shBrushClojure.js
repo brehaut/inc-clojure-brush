@@ -91,7 +91,8 @@ net.brehaut.ClojureTools = (function (SH) {
         case " ":    // ignore whitespace
         case "\t":
         case "\n":
-        case "\r": 
+        case "\r":
+        case ",":   
           extent++
           break; 
           
@@ -218,6 +219,7 @@ net.brehaut.ClojureTools = (function (SH) {
               case "\n":
               case "\r":
               case "\\":
+              case ",":
               case "{":
               case "}":
               case "(":
@@ -671,7 +673,6 @@ net.brehaut.ClojureTools = (function (SH) {
   function translate_tags_to_css(tokens) {
     for (var i = 0, j = tokens.length; i < j; i++) {
       var token = tokens[i];
-//      if (!css_translation[token.tag]) console.log(token.tag)
       token.css = css_translation[token.tag];
       for (var k in token.secondary_tags) if (token.secondary_tags.hasOwnProperty(k))
         token.css += " " + k ;
@@ -692,15 +693,11 @@ net.brehaut.ClojureTools = (function (SH) {
     else {
       show_locals = true;
     }
-    console.profile();
+    
     var tokens = tokenize(code);
-    
     annotate_expressions(build_tree(tokens), {});
-    
     translate_tags_to_css(tokens);
-    
-    console.profileEnd();
-    
+
     return tokens;
   };
   
