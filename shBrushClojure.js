@@ -394,8 +394,20 @@ net.brehaut.ClojureTools = (function (SH) {
       } 
       else if (exp.tag === "map") {
         for (var i = 0; i < exp.list.length; i += 2) {
-          annotate_destructuring(exp.list[i], scope);
-          annotate_expressions(exp.list[i + 1], scope);
+          var key = exp.list[i];
+          var val = exp.list[i + 1];
+          
+          if (key.tag === "keyword" && val.tag === "vector") {
+            for (var ii = 0, jj = val.list.length; ii < jj; ii++) {
+              if (val.list[ii].tag !== "symbol") continue;
+              val.list[ii].tag = "variable";
+              scope[val.list[ii].value] = true;
+            }
+          }
+          else {
+            annotate_destructuring(key, scope);
+            annotate_expressions(val, scope);
+          }
         } 
       }
     } 
@@ -405,30 +417,17 @@ net.brehaut.ClojureTools = (function (SH) {
     }
   }
 
-  function annotate_arguments (exp, scope) {
-  }
-
-  function _annotate_binding_vector (exp, scope, special_cases) {
+  function _annotate_binding_vector (exp, scope) {
     if (exp.tag !== "vector") return;
   
     var bindings = exp.list;
 
     if (bindings.length % 2 === 1) return;
     
-    if (special_cases) {
-      for (var i = 0; i < bindings.length; i += 2) {
-        annotate_destructuring(bindings[i], scope);
-        annotate_expressions(bindings[i + 1], scope);
-        special_cases(bindings[i], bindings[i + 1]);
-      }
-    } 
-    else {
-      for (var i = 0; i < bindings.length; i += 2) {
-        annotate_destructuring(bindings[i], scope);
-        annotate_expressions(bindings[i + 1], scope);
-      }
-    }
-    
+    for (var i = 0; i < bindings.length; i += 2) {
+      annotate_destructuring(bindings[i], scope);
+      annotate_expressions(bindings[i + 1], scope);
+    }    
   }
 
   function annotate_binding (exp, scope) {
@@ -665,7 +664,8 @@ net.brehaut.ClojureTools = (function (SH) {
     "#{":           "keyword",   
     "[":            "keyword",
     "]":            "keyword",
-    "invalid":      "invalid" 
+    "invalid":      "invalid",
+    "@":            "functions" 
   };
   
   function translate_tags_to_css(tokens) {
