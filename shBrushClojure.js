@@ -665,7 +665,7 @@ net.brehaut.ClojureTools = (function (SH) {
     "[":            "keyword",
     "]":            "keyword",
     "invalid":      "invalid",
-    "@":            "functions" 
+    "@":            "plain" 
   };
   
   function translate_tags_to_css(tokens) {
