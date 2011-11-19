@@ -125,7 +125,7 @@ net.brehaut.ClojureTools = (function (SH) {
           }
           else if (code.slice(i + 1, i + 6) === "space") {
             tokens[tn++] = new Token("\\space", i, "value", 6);
-            extent = i + 7;
+            extent = i + 6;
           }
           else if (code.slice(i + 1, i + 4) === "tab") {
             tokens[tn++] = new Token("\\tab", i, "value", 4);
