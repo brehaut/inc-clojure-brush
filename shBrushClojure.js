@@ -354,6 +354,7 @@ net.brehaut.ClojureTools = (function (SH) {
    */ 
   function annotate_comment(exp) {
     exp.tag = "comments";
+
     if (exp.list) {
       exp.opening.tag = "comments";
       exp.closing.tag = "comments";
@@ -363,14 +364,13 @@ net.brehaut.ClojureTools = (function (SH) {
         if (child.list) {
           annotate_comment(child);
         }
+        if (child.attached_node) {
+          annotate_comment(child.attached_node);
+        }
         else {
           child.tag = "comments";
         }
       }
-    }
-    else if (exp.attached_node) {
-      annotate_comment(exp.attached_node);
-      exp.token.tag = "comments";
     }
   }
 
@@ -399,7 +399,7 @@ net.brehaut.ClojureTools = (function (SH) {
         } 
       }
     } 
-    else if (exp.tag === "symbol"){
+    else if (exp.tag === "symbol" && exp.value != "&"){
       exp.tag = "variable";
       scope[exp.value] = true;
     }
@@ -409,7 +409,7 @@ net.brehaut.ClojureTools = (function (SH) {
   }
 
   function _annotate_binding_vector (exp, scope, special_cases) {
-    if (exp.tag != "vector") return;
+    if (exp.tag !== "vector") return;
   
     var bindings = exp.list;
 
@@ -444,6 +444,35 @@ net.brehaut.ClojureTools = (function (SH) {
     }
   }
   
+  function _annotate_function_body (exp, scope, start_idx) {
+    var argvec = exp.list[start_idx];
+    if (argvec.tag !== "vector") return;
+
+    scope = Object.create(scope);
+
+    for (var i = 0, j = argvec.list.length; i < j; i++) {
+      annotate_destructuring(argvec.list[i], scope);
+    }
+    
+    for (var i = start_idx, j = exp.list.length; i < j; i++) {
+      annotate_expressions(exp.list[i], scope);
+    }
+  }
+  
+  function annotate_function (exp, scope) {
+    for (var i = 1, j = exp.list.length; i < j; i++) {
+      var child = exp.list[i];
+      
+      if (child.tag === "vector") {
+        _annotate_function_body (exp, scope, i);
+        return;
+      }
+      else if (child.tag === "list") {
+        _annotate_function_body(child, scope, 0)
+      }
+    }
+  }
+  
 
   register_annotation_rule(
     ["comment"],
@@ -453,6 +482,11 @@ net.brehaut.ClojureTools = (function (SH) {
   register_annotation_rule(
     ["let", "when-let", "if-let", "binding", "doseq", "for"],
     annotate_binding
+  );
+  
+  register_annotation_rule(
+    ["defn", "defn-", "fn", "bound-fn", "defmacro"],
+    annotate_function
   );
   
 
@@ -473,9 +507,6 @@ net.brehaut.ClojureTools = (function (SH) {
       _annotate_metadata_recursive(meta.attached_node, scope);
     }
     else {
-      if (meta.tag === "symbol" && meta.value.match(/([A-Z].*\/)?[A-Z_]+/)) {
-        meta.tag = "type";
-      }
       meta.secondary_tags.meta = true;
     }
   }
@@ -528,6 +559,9 @@ net.brehaut.ClojureTools = (function (SH) {
            || head.tag === "map" || head.tag === "set") {
             annotate_expressions(head, scope);
           }
+          else if (head.attached_node) {
+            annotate_expressions(head.attached_node, scope);
+          }
           else {
             head.tag = (head.value.match(/(^\.)|(\.$)|[A-Z].*\//)
                         ? "method"
@@ -565,6 +599,9 @@ net.brehaut.ClojureTools = (function (SH) {
         }
         else if (show_locals && scope[exp.value]) {
           exp.tag = "variable";
+        }
+        else if (exp.tag === "symbol" && exp.value.match(/([A-Z].*\/)?[A-Z_]+/)) {
+          exp.tag = "type";
         }
         break;
       
