@@ -1,5 +1,7 @@
 # (inc clojure-brush)
 
+**V0.9.1**
+
 This is a smarter Clojure brush for [Syntax Highlighter](https://github.com/alexgorbatchev/SyntaxHighlighter) that goes further than existing efforts such as [sh-clojure](https://github.com/sattvik/sh-clojure). This brush is aware of S-Expression forms in clojure and provide sensible highlighting rules for core forms, and supports special rules for common core forms. 
 
 You can see this running [here](http://brehaut.net/blog/2011/l_systems) and [here](http://brehaut.net/blog/2011/ring_introduction).
