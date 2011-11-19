@@ -473,6 +473,27 @@ net.brehaut.ClojureTools = (function (SH) {
     }
   }
   
+  function annotate_letfn (exp, scope) {
+    scope = Object.create(scope);
+    var bindings = exp.list[1];
+    
+    var fn;
+    for (var i = 0, j = bindings.list.length; i < j; i++) {
+      fn = bindings.list[i];
+      if (!fn.list[0]) continue;
+      fn.list[0].tag = "variable";
+      scope[fn.list[0].value] = true;
+    }
+    
+    for (i = 0, j = bindings.list.length; i < j; i++) {
+      var fn = bindings.list[i];
+      annotate_function(fn, scope);
+    }
+    
+    for (i = 2, j = exp.list.length; i < j; i++) {
+      annotate_expressions(exp.list[i], scope);
+    }
+  }
 
   register_annotation_rule(
     ["comment"],
@@ -480,7 +501,7 @@ net.brehaut.ClojureTools = (function (SH) {
   );
   
   register_annotation_rule(
-    ["let", "when-let", "if-let", "binding", "doseq", "for"],
+    ["let", "when-let", "if-let", "binding", "doseq", "for", "dotimes"],
     annotate_binding
   );
   
@@ -489,6 +510,10 @@ net.brehaut.ClojureTools = (function (SH) {
     annotate_function
   );
   
+  register_annotation_rule(
+    ["letfn"],
+    annotate_letfn
+  );
 
   // standard annotations
 
