@@ -24,7 +24,7 @@ net.brehaut.ClojureTools = (function (SH) {
     this.index = index;
     this.length = length || value.length;
     this.tag = tag;
-    this.is_meta = false;
+    this.secondary_tags = {};
   }
   
   // null_token exists so that LispNodes that have not had a closing tag attached
@@ -143,9 +143,8 @@ net.brehaut.ClojureTools = (function (SH) {
             tokens[tn++] = new Token(code.slice(i, extent), i, "splice", 2);
           }
           else {
-            tokens[tn++] = new Token(code.slice(i, ++extent), i, "splice", 2);
+            tokens[tn++] = new Token(code.slice(i, ++extent), i, "unquote", 2);
           }
-          console.log(tokens[tn - 1])
           break;
         
         // complicated terms
@@ -306,6 +305,10 @@ net.brehaut.ClojureTools = (function (SH) {
           return new PrefixNode("deref", t, parse_one(tokens[++i]));  
         case "`":
           return new PrefixNode("quasiquote", t, parse_one(tokens[++i]));  
+        case "unquote":
+          return new PrefixNode("unquote", t, parse_one(tokens[++i]));
+        case "splice":
+          return new PrefixNode("splice", t, parse_one(tokens[++i]));  
         case "^":
           t.tag = "meta";
           var meta = parse_one(tokens[++i]);
@@ -343,6 +346,8 @@ net.brehaut.ClojureTools = (function (SH) {
 
   // annotation rules to apply to a form based on its head
 
+  var show_locals = true;  // HACK. would rather not use a (semi)-global.
+
   /* annotate_comment is a special case annotation. 
    * in addition to its role in styling specific forms, it is called by parse_one to
    * ignore any forms skipped with #_
@@ -370,7 +375,7 @@ net.brehaut.ClojureTools = (function (SH) {
   }
 
   /* custom annotation rules are stored here */
-  var annotation_rules = {}
+  var annotation_rules = {};
   
   // this function is exposed to allow ad hoc extension of the customisation rules
   function register_annotation_rule(names, rule) {
@@ -428,6 +433,7 @@ net.brehaut.ClojureTools = (function (SH) {
 
   function annotate_binding (exp, scope) {
     var bindings = exp.list[1];
+    if (!show_locals) return; // HACK
 
     if (bindings) {
       scope = Object.create(scope);
@@ -457,20 +463,20 @@ net.brehaut.ClojureTools = (function (SH) {
 
     if (meta.list !== undefined && meta.list !== null) {
       for (var i = 0, j = meta.list.length; i < j; i++) {
-        meta.opening.is_meta = true
-        meta.closing.is_meta = true
+        meta.opening.secondary_tags.meta = true
+        meta.closing.secondary_tags.meta = true
         _annotate_metadata_recursive(meta.list[i], scope);
       }
     }
     else if (meta.attached_node) {
-      meta.token.is_meta = true;
+      meta.token.secondary_tags.meta = true;
       _annotate_metadata_recursive(meta.attached_node, scope);
     }
     else {
       if (meta.tag === "symbol" && meta.value.match(/([A-Z].*\/)?[A-Z_]+/)) {
         meta.tag = "type";
       }
-      meta.is_meta = true;
+      meta.secondary_tags.meta = true;
     }
   }
   
@@ -480,6 +486,27 @@ net.brehaut.ClojureTools = (function (SH) {
     
      annotate_expressions(meta, {});    
     _annotate_metadata_recursive(meta, {});
+  }
+
+
+  function annotate_quoted(exp, scope) {
+    if (!exp) return;
+
+    if (exp.list !== undefined && exp.list !== null) {
+      for (var i = 0, j = exp.list.length; i < j; i++) {
+        exp.opening.secondary_tags.quoted = true
+        exp.closing.secondary_tags.quoted = true
+        annotate_quoted(exp.list[i], scope);
+      }
+    }
+    else if (exp.attached_node) {
+      if (exp.tag === "unquote" || exp.tag === "splice") return;
+      exp.token.secondary_tags.quoted = true;
+      annotate_quoted(exp.attached_node, scope);
+    }
+    else {
+      exp.secondary_tags.quoted = true;
+    }
   }
 
 
@@ -536,11 +563,15 @@ net.brehaut.ClojureTools = (function (SH) {
         if (exp.value.match(/[A-Z].*\/[A-Z_]+/)) {
           exp.tag = "constant";
         }
-        else if (scope[exp.value]) {
+        else if (show_locals && scope[exp.value]) {
           exp.tag = "variable";
         }
         break;
       
+      case "quote":
+      case "quasiquote":
+        annotate_quoted(exp.attached_node, scope);
+        
       default:
         if (exp.attached_node) annotate_expressions(exp.attached_node, scope);
     }
@@ -560,6 +591,7 @@ net.brehaut.ClojureTools = (function (SH) {
     "symbol":       "symbol",
     "variable":     "variable",
     "splice":       "preprocessor", 
+    "unquote":      "preprocessor",     
     "preprocessor": "preprocessor",
     "meta":         "preprocessor", 
     "'":            "preprocessor", 
@@ -572,14 +604,15 @@ net.brehaut.ClojureTools = (function (SH) {
     "[":            "keyword",
     "]":            "keyword",
     "invalid":      "invalid" 
-  }
+  };
   
   function translate_tags_to_css(tokens) {
     for (var i = 0, j = tokens.length; i < j; i++) {
       var token = tokens[i];
 //      if (!css_translation[token.tag]) console.log(token.tag)
       token.css = css_translation[token.tag];
-      if (token.is_meta) token.css += " meta";
+      for (var k in token.secondary_tags) if (token.secondary_tags.hasOwnProperty(k))
+        token.css += " " + k ;
     };
   }
   
@@ -590,6 +623,13 @@ net.brehaut.ClojureTools = (function (SH) {
   SH.brushes.Clojure.prototype = new SyntaxHighlighter.Highlighter();
   
   SH.brushes.Clojure.prototype.findMatches = function find_matches (regexpList, code) {
+    // this is a nasty global hack. need to resolve this
+    if (this.params && this.params.locals) {
+      show_locals = this.params.locals === true || this.params.locals === "true"; 
+    }
+    else {
+      show_locals = true;
+    }
     console.profile();
     var tokens = tokenize(code);
     

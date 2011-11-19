@@ -19,7 +19,7 @@ In addition to correctness, this brush attempts to be tolerant of squiffy code, 
     * Differentiates between #{functions, macros}, #{methods and constructors}.
     * Knows about name binding forms such as let, binding, for, etc
        * Tracks locals and highlights them separately
-    * Handles metadata
+    * Handles metadata and quoted forms
        * Styling is supported with appropriate CSS.    
     * Detects malformed code
        * Limited to incorrectly closed aggregate expressions currently

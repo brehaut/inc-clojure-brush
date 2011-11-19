@@ -19,6 +19,10 @@
       .syntaxhighlighter .meta {
           opacity: 0.65 !important;
       }
+
+      .syntaxhighlighter .quoted {      
+          font-style: italic !important;
+      }
     </style>
 
     <script type="text/javascript">
@@ -62,6 +66,9 @@
       {a :key1} (into {} [[:key1 1] [:b 2]])]
  a)
 
+(let [a '(list 1 2 3)] a)
+
+(a b `(foo bar ~(baz bop '(a b))))
 
 (defn cross-product
  "Calculates the cross product of two seqs"
