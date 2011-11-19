@@ -19,41 +19,20 @@
 
 <h1>Clojure Brush:</h1>
 <pre class="brush: clojure;">
-(defn foo
-  "a                                                                                                                    
-   b"
-  [a]
-  (if (zero? a) ; dumb test
-    [1 0.1 1r2 1/2 +1 -0.2 12r23 23M]
-    :b))
+(comment (def a {:key "val"}))
 
-    \a
-    \+ \newline
-    \tab
-    \space
+#_ (def a {:key "val"})
 
-#_ skipped   
+; (def a {:key "val"})
 
-#_ (also skipped)
-    
+"string"    
 #"regexp"
+1 1.2 -1 1/2 2r1
+true false nil
+\a \b \space \tab \newline \&gt; \&lt; \&amp;
+[1 2 3] {:a 1 :b 2 :c 3} #{:a :b :c}
 
-(comment this is a test
-   (when frobitz :asdf))
-   
-(for [a #{1 2 3}
-     :let [b (dec a)] ; bogus
-     :when (zero? b)]
- a)
-
-(let [a #{1 2 3}
-      [x y] (list 1 2)
-      {a :key1} (into {} [[:key1 1] [:b 2]])]
- a)
-
-(let [a '(list 1 2 3)] a)
-
-(a b `(foo bar ~(baz bop '(a b))))
+(unquoted `(quasi quoted ~(unquoted foo '(quoted))))
 
 (defn cross-product
  "Calculates the cross product of two seqs"
@@ -61,12 +40,6 @@
  (for [a s1
 	   b s2]
    [a b]))
-
-; Rainbow Parens:
-((((((()))))))
-
-(map #(+ % %2) [1 2 3] [2 3 4])
-
 
 (import (javax.swing JFrame JPanel)
         (java.awt Graphics2D RenderingHints)
@@ -114,7 +87,7 @@
 (clojure.core/.. o m1 m2)
 (... f 1 2)
 
-1 true false nil
+
 
 </pre>
 

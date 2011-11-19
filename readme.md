@@ -1,21 +1,18 @@
 # (inc clojure-brush)
 
-## ;; Work In Progress
+This is a smarter Clojure brush for [Syntax Highlighter](https://github.com/alexgorbatchev/SyntaxHighlighter) that goes further than existing efforts such as [sh-clojure](https://github.com/sattvik/sh-clojure). This brush is aware of S-Expression forms in clojure and provide sensible highlighting rules for core forms, and supports special rules for common core forms. 
 
-This project aims to product a smarter clojure brush for [Syntax Highlighter](https://github.com/alexgorbatchev/SyntaxHighlighter) that goes further than existing efforts such as [sh-clojure](https://github.com/sattvik/sh-clojure). This brush attempts to be moderately aware of S-Expression forms in clojure and provide sensible highlighting rules for core forms, and hopefully guess sensibly for additional forms. 
+You can see this running [here](http://brehaut.net/blog/2011/l_systems) and [here](http://brehaut.net/blog/2011/ring_introduction).
 
-In addition to correctness, this brush attempts to be tolerant of squiffy code, and run as fast as it can. The brush has a hand written tokenizer that drastically outperforms the initial regexen based solution.
+## Installation
 
-<img src="http://media.brehaut.net/files/tmp/clojure-brush.png">
-
-
+Just install `shClojureBrush.js` as you would any other brush for syntax highlighter. If you also include `shClojureExtra.css` you will have the additional CSS rules for metadata, quotes and unmatched closing tokens.
 
 ## Improvements over sh-clojure
 
  * Full tokenizer and parser allow for structure aware highlighting:
-    * `comment …` forms are correctly highlighted.
-    * Doesn't need to use a list of `clojure.core` symbols; can infer meaning from position in a    
-      form.
+    * `comment …` and `#_` forms are correctly highlighted.
+    * Doesn't need to use a list of `clojure.core` symbols; can infer meaning from position in a form.
     * Differentiates between #{functions, macros}, #{methods and constructors}.
     * Knows about name binding forms such as let, binding, for, etc
        * Tracks locals and highlights them separately
@@ -29,9 +26,6 @@ In addition to correctness, this brush attempts to be tolerant of squiffy code, 
 
 ## Todo 
  
- * Internet Explorer testing.
- * All the destructuring rules need to be supported for scopes.
- * Function annotators (for arguments). 
  * Tokenizer for Constructor literals.
  * Improved error handling
  * Expose registering custom form annotation rules.

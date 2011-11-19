@@ -131,7 +131,20 @@ net.brehaut.ClojureTools = (function (SH) {
           else if (code.slice(i + 1, i + 4) === "tab") {
             tokens[tn++] = new Token("\\tab", i, "value", 4);
             extent = i + 5;
+          } // work around fun bug with &,>,< in character literals
+          else if (code.slice(i + 1, i + 6) === "&amp;") {
+            tokens[tn++] = new Token("\\&amp;", i, "value", 6);
+            extent = i + 6; 
           }
+          else if (code.slice(i + 1, i + 5) === "&lt;") {
+            tokens[tn++] = new Token("\\&lt;", i, "value", 5);
+            extent = i + 5;
+          }
+          else if (code.slice(i + 1, i + 5) === "&gt;") {
+            tokens[tn++] = new Token("\\&gt;", i, "value", 5);
+            extent = i + 5;
+          }
+          
           else {
             extent += 2;
             tokens[tn++] = new Token(code.slice(i, extent), i, "value", 2);
@@ -413,7 +426,7 @@ net.brehaut.ClojureTools = (function (SH) {
         } 
       }
     } 
-    else if (exp.tag === "symbol" && exp.value != "&"){
+    else if (exp.tag === "symbol" && (exp.value !== "&" && exp.value !== "&amp;")){
       exp.tag = "variable";
       scope[exp.value] = true;
     }
@@ -502,12 +515,12 @@ net.brehaut.ClojureTools = (function (SH) {
   );
   
   register_annotation_rule(
-    ["let", "when-let", "if-let", "binding", "doseq", "for", "dotimes"],
+    ["let", "when-let", "if-let", "binding", "doseq", "for", "dotimes", "let*"],
     annotate_binding
   );
   
   register_annotation_rule(
-    ["defn", "defn-", "fn", "bound-fn", "defmacro"],
+    ["defn", "defn-", "fn", "bound-fn", "defmacro", "fn*"],
     annotate_function
   );
   
