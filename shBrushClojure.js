@@ -63,6 +63,10 @@ net.brehaut.ClojureTools = (function (SH) {
     
     var zero = "0".charCodeAt(0);
     var nine = "9".charCodeAt(0); 
+    var lower_a = "a".charCodeAt(0);
+    var lower_f = "f".charCodeAt(0);    
+    var upper_a = "A".charCodeAt(0);
+    var upper_f = "F".charCodeAt(0);
     
     var dispatch = false; // have we just seen a # character?
     
@@ -189,8 +193,8 @@ net.brehaut.ClojureTools = (function (SH) {
         case "9":
         // todo: exponents, hex
         // http://my.safaribooksonline.com/9781449310387/14?reader=pf&readerfullscreen=&readerleftmenu=1
-          var c2 = code[i + 1];
-          if (((c === "+" || c === "-") && c2.match(/[0-9]/)) // prefixes
+          var c2 = code.charCodeAt(i + 1);
+          if (((c === "+" || c === "-") && (c2 >= zero && c2 <= nine)) // prefixes
               || (c !== "+" && c !== "-")) {
             if (c === "+" || c === "-") extent++; 
             for (; extent <= j; extent++) {
@@ -199,9 +203,34 @@ net.brehaut.ClojureTools = (function (SH) {
             }
             
             c = code[extent];
-            c2 = code[extent + 1];
+            c2 = code.charCodeAt(extent + 1);
             if ((c === "r" || c === "R" || c === "/" || c === ".") // interstitial characters
-                && c2.match(/[0-9]/)) {
+                && (c2 >= zero && c2 <= nine)) {
+              for (extent++; extent <= j; extent++) {
+                var charCode = code.charCodeAt(extent);
+                if (charCode < zero || charCode > nine) break;
+              }
+            }
+            
+            c = code[extent];
+            c2 = code.charCodeAt(extent + 1);
+            if ((c === "x" || c === "X") && 
+                ((c2 >= zero && c2 <= nine) 
+                 || (c2 >= lower_a && c2 <= lower_f)
+                 || (c2 >= upper_a && c2 <= upper_f))) {
+              for (extent++; extent <= j; extent++) {
+                var charCode = code.charCodeAt(extent);
+                if (((charCode >= zero && charCode <= nine) 
+                    || (charCode >= lower_a && charCode <= lower_f)
+                    || (charCode >= upper_a && charCode <= upper_f))) continue;
+                break;
+              }
+            }
+            
+            c = code[extent];
+            c2 = code.charCodeAt(extent + 1);
+            if ((c === "e" || c === "E") 
+                && (c2 >= zero && c2 <= nine)) {
               for (extent++; extent <= j; extent++) {
                 var charCode = code.charCodeAt(extent);
                 if (charCode < zero || charCode > nine) break;
