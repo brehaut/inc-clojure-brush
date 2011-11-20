@@ -1,9 +1,13 @@
-// (inc closjure-brush) ;; an improved SyntaxHighlighter brush for clojure
+// (inc clojure-brush) ;; an improved SyntaxHighlighter brush for clojure
+//
+// Copyright (C) 2011 Andrew Brehaut
+//
+// Distributed under the Eclipse Public License, the same as Clojure.
 //
 // https://github.com/brehaut/inc-clojure-brush
 //
 // Written by Andrew Brehaut
-// V0.9, November 2011
+// V0.9.1, November 2011
 
 if (typeof net == "undefined") net = {};
 if (!(net.brehaut)) net.brehaut = {};
