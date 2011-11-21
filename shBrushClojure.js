@@ -120,7 +120,7 @@ net.brehaut.ClojureTools = (function (SH) {
           break
         
         case "(":
-          tokens[tn++] = new Token(code.slice(i, ++extent), i, "(", extent - i);
+          tokens[tn++] = new Token(code.slice(i, ++extent), i, dispatch ? "#(" : "(", extent - i);
           break;          
           
         case "{":
@@ -324,6 +324,8 @@ net.brehaut.ClojureTools = (function (SH) {
     var i = -1;
     var j = tokens.length;
     
+    var short_fn = false; // are we already inside a #( … ) function form?
+    
     function parse_one(t) {
       // ignore special tokens and forms that dont belong in the tree
       for (; t && (t.tag === "comments" || t.tag === "invalid" || t.tag == "skip") && i < j; ) {
@@ -345,6 +347,20 @@ net.brehaut.ClojureTools = (function (SH) {
           return build_aggregate(new LispNode("set", [], t), "}");
         case "[":
           return build_aggregate(new LispNode("vector", [], t), "]");
+        case "#(": // this is a bit hairy, but it annotates nested #( … ) forms as invalid
+          var prev_short_fn = short_fn;
+          try {
+            short_fn = true;
+            var aggregate = build_aggregate(new LispNode("list", [], t), ")");  
+            if (prev_short_fn) {
+              aggregate.opening.tag = "invalid";
+              aggregate.closing.tag = "invalid";
+            }
+            return aggregate;
+          }
+          finally {
+            short_fn = prev_short_fn;
+          }
         case "'":
           return new PrefixNode("quote", t, parse_one(tokens[++i]));
         case "#'":
@@ -553,7 +569,7 @@ net.brehaut.ClojureTools = (function (SH) {
   );
   
   register_annotation_rule(
-    ["defn", "defn-", "fn", "bound-fn", "defmacro", "fn*"],
+    ["defn", "defn-", "fn", "bound-fn", "defmacro", "fn*", "defmethod"],
     annotate_function
   );
   

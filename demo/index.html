@@ -34,6 +34,8 @@ true false nil
 
 (unquoted `(quasi quoted ~(unquoted foo '(quoted))))
 
+(map #(foo #(bar %) %) [1 2 3])
+
 (defn cross-product
  "Calculates the cross product of two seqs"
  [s1 s2]
