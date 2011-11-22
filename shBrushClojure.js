@@ -368,7 +368,7 @@ net.brehaut.ClojureTools = (function (SH) {
         case "@":
           return new PrefixNode("deref", t, parse_one(tokens[++i]));  
         case "`":
-          return new PrefixNode("quasiquote", t, parse_one(tokens[++i]));  
+          return new PrefixNode("syntaxquote", t, parse_one(tokens[++i]));  
         case "unquote":
           return new PrefixNode("unquote", t, parse_one(tokens[++i]));
         case "splice":
@@ -694,7 +694,7 @@ net.brehaut.ClojureTools = (function (SH) {
         break;
       
       case "quote":
-      case "quasiquote":
+      case "syntaxquote":
         annotate_quoted(exp.attached_node, scope);
         
       default:

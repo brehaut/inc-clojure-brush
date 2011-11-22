@@ -32,9 +32,8 @@ true false nil
 \a \b \space \tab \newline \&gt; \&lt; \&amp;
 [1 2 3] {:a 1 :b 2 :c 3} #{:a :b :c}
 
-(unquoted `(quasi quoted ~(unquoted foo '(quoted))))
+(unquoted `(syntax quoted ~(unquoted foo '(quoted))))
 
-(map #(foo #(bar %) %) [1 2 3])
 
 (defn cross-product
  "Calculates the cross product of two seqs"
@@ -89,8 +88,14 @@ true false nil
 (clojure.core/.. o m1 m2)
 (... f 1 2)
 
+; some invalid forms
+(map #(foo #(bar %) %) [1 2 3])
 
+(defn a [ 1 2))
 
+(a b c))
+
+(foo bar)
 </pre>
 
 </html>
